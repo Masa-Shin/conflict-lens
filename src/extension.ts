@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 
+import { t } from './l10n';
+
 const EXTENSION_NAME = 'Conflict Lens';
 
 let logChannel: vscode.LogOutputChannel | undefined;
@@ -8,15 +10,15 @@ let statusBarItem: vscode.StatusBarItem | undefined;
 export function activate(context: vscode.ExtensionContext): void {
   logChannel = vscode.window.createOutputChannel(EXTENSION_NAME, { log: true });
   context.subscriptions.push(logChannel);
-  logChannel.info(`${EXTENSION_NAME} activated.`);
+  logChannel.info(t('{0} activated.', EXTENSION_NAME));
 
   statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     100,
   );
   statusBarItem.name = EXTENSION_NAME;
-  statusBarItem.text = `${EXTENSION_NAME}: (initializing)`;
-  statusBarItem.tooltip = `${EXTENSION_NAME}: open output channel`;
+  statusBarItem.text = t('{0}: (initializing)', EXTENSION_NAME);
+  statusBarItem.tooltip = t('{0}: open output channel', EXTENSION_NAME);
   statusBarItem.command = 'conflictLens.showOutputChannel';
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
@@ -48,7 +50,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
   for (const [command, label] of stubs) {
     context.subscriptions.push(
       vscode.commands.registerCommand(command, () => {
-        const message = `${EXTENSION_NAME}: '${label}' is not implemented yet.`;
+        const message = t("{0}: '{1}' is not implemented yet.", EXTENSION_NAME, label);
         logChannel?.warn(message);
         void vscode.window.showInformationMessage(message);
       }),

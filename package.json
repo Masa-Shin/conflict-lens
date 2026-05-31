@@ -1,7 +1,7 @@
 {
   "name": "conflict-lens",
-  "displayName": "Conflict Lens",
-  "description": "Visualize files and lines that may conflict with the base branch.",
+  "displayName": "%conflictLens.displayName%",
+  "description": "%conflictLens.description%",
   "version": "0.0.1",
   "publisher": "Masa-Shin",
   "license": "MIT",
@@ -9,6 +9,7 @@
     "vscode": "^1.74.0"
   },
   "main": "./dist/extension.js",
+  "l10n": "./l10n",
   "extensionDependencies": [
     "vscode.git"
   ],
@@ -18,19 +19,19 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,
-      "description": "Conflict Lens executes git commands and reads workspace settings, so it requires a trusted workspace."
+      "description": "%conflictLens.capabilities.untrustedWorkspaces.description%"
     }
   },
   "contributes": {
     "commands": [
-      { "command": "conflictLens.enable", "title": "Enable", "category": "Conflict Lens" },
-      { "command": "conflictLens.disable", "title": "Disable", "category": "Conflict Lens" },
-      { "command": "conflictLens.toggle", "title": "Toggle", "category": "Conflict Lens" },
-      { "command": "conflictLens.selectBaseBranch", "title": "Select Base Branch", "category": "Conflict Lens" },
-      { "command": "conflictLens.refresh", "title": "Refresh", "category": "Conflict Lens" },
-      { "command": "conflictLens.showChangedFiles", "title": "Show Changed Files", "category": "Conflict Lens" },
-      { "command": "conflictLens.openDiff", "title": "Open Diff", "category": "Conflict Lens" },
-      { "command": "conflictLens.showOutputChannel", "title": "Show Output Channel", "category": "Conflict Lens" }
+      { "command": "conflictLens.enable", "title": "%conflictLens.command.enable.title%", "category": "%conflictLens.command.category%" },
+      { "command": "conflictLens.disable", "title": "%conflictLens.command.disable.title%", "category": "%conflictLens.command.category%" },
+      { "command": "conflictLens.toggle", "title": "%conflictLens.command.toggle.title%", "category": "%conflictLens.command.category%" },
+      { "command": "conflictLens.selectBaseBranch", "title": "%conflictLens.command.selectBaseBranch.title%", "category": "%conflictLens.command.category%" },
+      { "command": "conflictLens.refresh", "title": "%conflictLens.command.refresh.title%", "category": "%conflictLens.command.category%" },
+      { "command": "conflictLens.showChangedFiles", "title": "%conflictLens.command.showChangedFiles.title%", "category": "%conflictLens.command.category%" },
+      { "command": "conflictLens.openDiff", "title": "%conflictLens.command.openDiff.title%", "category": "%conflictLens.command.category%" },
+      { "command": "conflictLens.showOutputChannel", "title": "%conflictLens.command.showOutputChannel.title%", "category": "%conflictLens.command.category%" }
     ],
     "configuration": {
       "type": "object",
@@ -40,50 +41,50 @@
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "description": "Enable or disable Conflict Lens."
+          "description": "%conflictLens.config.enabled.description%"
         },
         "conflictLens.baseBranch": {
           "type": "string",
           "default": "origin/main",
           "scope": "resource",
-          "description": "Remote-tracking branch to compare against (e.g. origin/main). If unset, Conflict Lens tries to detect a default."
+          "description": "%conflictLens.config.baseBranch.description%"
         },
         "conflictLens.deletedLineMarkerPosition": {
           "type": "string",
           "enum": ["nextLine", "previousLine", "none"],
           "default": "nextLine",
           "scope": "window",
-          "description": "Gutter marker position for deletion-only diffs."
+          "description": "%conflictLens.config.deletedLineMarkerPosition.description%"
         },
         "conflictLens.showOverviewRuler": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "description": "Show markers in the editor overview ruler."
+          "description": "%conflictLens.config.showOverviewRuler.description%"
         },
         "conflictLens.showGutterIcon": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "description": "Show gutter icons for changed and conflicting lines."
+          "description": "%conflictLens.config.showGutterIcon.description%"
         },
         "conflictLens.showFileDecorationColors": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "description": "Tint file names in Explorer / Open Editors for changed files."
+          "description": "%conflictLens.config.showFileDecorationColors.description%"
         },
         "conflictLens.showFileDecorationBadges": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "description": "Show warning badges on file names that may conflict."
+          "description": "%conflictLens.config.showFileDecorationBadges.description%"
         },
         "conflictLens.enableConflictPrediction": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "description": "Enable strong highlight using git merge-tree (requires Git 2.38+). Disable for very large repositories."
+          "description": "%conflictLens.config.enableConflictPrediction.description%"
         },
         "conflictLens.remoteCheckIntervalMinutes": {
           "type": "integer",
@@ -91,13 +92,13 @@
           "minimum": 0,
           "maximum": 1440,
           "scope": "window",
-          "description": "Interval in minutes for polling remote updates with git ls-remote. Set to 0 to disable."
+          "description": "%conflictLens.config.remoteCheckIntervalMinutes.description%"
         },
         "conflictLens.autoFetchOnRemoteUpdate": {
           "type": "boolean",
           "default": false,
           "scope": "window",
-          "description": "Automatically run git fetch and recompute when remote updates are detected."
+          "description": "%conflictLens.config.autoFetchOnRemoteUpdate.description%"
         },
         "conflictLens.largeFileHunkThreshold": {
           "type": "integer",
@@ -105,14 +106,14 @@
           "minimum": 1,
           "maximum": 10000,
           "scope": "window",
-          "description": "Suppress line highlights when a file has more diff hunks than this threshold."
+          "description": "%conflictLens.config.largeFileHunkThreshold.description%"
         }
       }
     },
     "colors": [
       {
         "id": "conflictLens.changedLineBackground",
-        "description": "Background color for lines changed on the base branch (weak highlight).",
+        "description": "%conflictLens.color.changedLineBackground.description%",
         "defaults": {
           "dark": "#ffc80030",
           "light": "#b88a0030",
@@ -122,7 +123,7 @@
       },
       {
         "id": "conflictLens.conflictLineBackground",
-        "description": "Background color for lines that conflict with the base branch (strong highlight).",
+        "description": "%conflictLens.color.conflictLineBackground.description%",
         "defaults": {
           "dark": "#f14c4c50",
           "light": "#b0002050",
@@ -132,7 +133,7 @@
       },
       {
         "id": "conflictLens.changedFileForeground",
-        "description": "Foreground color for files changed relative to the selected base branch.",
+        "description": "%conflictLens.color.changedFileForeground.description%",
         "defaults": {
           "dark": "#d7ba7d",
           "light": "#795e26",
@@ -142,7 +143,7 @@
       },
       {
         "id": "conflictLens.potentialConflictFileForeground",
-        "description": "Foreground color for files that may conflict with the selected base branch.",
+        "description": "%conflictLens.color.potentialConflictFileForeground.description%",
         "defaults": {
           "dark": "#f14c4c",
           "light": "#b00020",
