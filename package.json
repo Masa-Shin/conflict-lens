@@ -14,12 +14,15 @@
     "build:prod": "node esbuild.config.mjs --production",
     "watch": "node esbuild.config.mjs --watch",
     "typecheck": "tsc --noEmit -p ./",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "vscode:prepublish": "npm run build:prod"
   },
   "devDependencies": {
-    "@types/node": "^18.19.0",
+    "@types/node": "^22.0.0",
     "@types/vscode": "^1.74.0",
     "esbuild": "^0.28.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.7"
   }
 }
