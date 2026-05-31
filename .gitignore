@@ -145,3 +145,4 @@ vite.config.ts.timestamp-*
 # Design documents (managed outside git)
 specification.md
 TASKS.md
+FUTURE.md
