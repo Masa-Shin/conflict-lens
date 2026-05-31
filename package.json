@@ -1,0 +1,21 @@
+{
+  "name": "conflict-lens",
+  "displayName": "Conflict Lens",
+  "description": "Visualize files and lines that may conflict with the base branch.",
+  "version": "0.0.1",
+  "publisher": "Masa-Shin",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "main": "./dist/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.4.0"
+  }
+}
