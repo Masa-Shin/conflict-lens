@@ -10,12 +10,16 @@
   },
   "main": "./dist/extension.js",
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "build": "node esbuild.config.mjs",
+    "build:prod": "node esbuild.config.mjs --production",
+    "watch": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit -p ./",
+    "vscode:prepublish": "npm run build:prod"
   },
   "devDependencies": {
     "@types/node": "^18.19.0",
     "@types/vscode": "^1.74.0",
+    "esbuild": "^0.28.0",
     "typescript": "^5.4.0"
   }
 }
