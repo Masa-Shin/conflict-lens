@@ -154,7 +154,7 @@ VSCode で git リポジトリ（`.git/` がある）のフォルダを開く。
 
 ### 6. 差分エディタで詳細を見る
 
-- **`Conflict Lens: Open Diff`** → アクティブなエディタについて、`base 側の内容 ↔ HEAD 側の内容` で VSCode 標準の Diff Editor を開く
+- **`Conflict Lens: Open Diff`** → アクティブなエディタについて、`merge-base 時点の内容 ↔ 現在の HEAD/バッファ` で VSCode 標準の Diff Editor を開く。弱ハイライトと同じ merge-base アンカーなので、ハイライトの根拠が一目で分かる
 
 ### 7. リモート更新が来たら
 
@@ -298,7 +298,7 @@ Extension Development Host ウィンドウのメニューで `File → Open Fold
 
 - [ ] `Conflict Lens: Select Base Branch` → QuickPick でリモート追跡ブランチが出る
 - [ ] `Conflict Lens: Show Changed Files` → base が変えたファイル一覧、衝突ファイルは上位 + `Predicted conflict`
-- [ ] `Conflict Lens: Open Diff` → 開いてるファイルが `origin/main ↔ app.js` で diff 表示
+- [ ] `Conflict Lens: Open Diff` → 開いてるファイルが `origin/main merge-base ↔ app.js` で diff 表示
 - [ ] `Conflict Lens: Toggle` → 全装飾の on/off
 - [ ] `Conflict Lens: Refresh` → キャッシュ全破棄 + 再計算
 - [ ] `Conflict Lens: Enable` / `Disable` → 同じく on/off
@@ -393,7 +393,7 @@ VSCode の `workbench.colorCustomizations` で背景色やファイル色を上�
 | `conflictLens.refresh` | Refresh | 全キャッシュ破棄 + 再計算 |
 | `conflictLens.selectBaseBranch` | Select Base Branch | QuickPick で base を選択 |
 | `conflictLens.showChangedFiles` | Show Changed Files | base が変えたファイル一覧 |
-| `conflictLens.openDiff` | Open Diff | アクティブファイルの base ↔ HEAD 差分 |
+| `conflictLens.openDiff` | Open Diff | アクティブファイルの merge-base ↔ HEAD/バッファ 差分 |
 | `conflictLens.showOutputChannel` | Show Output Channel | ログを開く |
 
 ---

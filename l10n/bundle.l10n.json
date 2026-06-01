@@ -34,6 +34,7 @@
   "{0}: failed to list changed files.": "{0}: failed to list changed files.",
   "{0}: no active editor.": "{0}: no active editor.",
   "{0}: file is not inside the repository.": "{0}: file is not inside the repository.",
+  "{0}: cannot determine merge-base with {1}.": "{0}: cannot determine merge-base with {1}.",
   "Predicted conflict": "Predicted conflict",
   "Select a file to open": "Select a file to open",
   "{0}: {1} has moved upstream.": "{0}: {1} has moved upstream.",

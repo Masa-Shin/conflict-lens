@@ -1339,11 +1339,28 @@ async function openDiffCommand(): Promise<void> {
   const normalized = relative.split(path.sep).join('/');
   if (normalized === '' || normalized.startsWith('..')) return;
 
+  // Anchor the diff at the merge-base so the LEFT side shows the file
+  // as it existed at the fork point, not at base-branch tip. This
+  // matches the weak highlight's reference frame (`git diff --merge-base
+  // HEAD <base>`) and lets the user see exactly how their work has
+  // diverged from where the two branches last agreed.
+  const mergeBaseSha = await resolveMergeBase(
+    ctx.environment.runner,
+    ctx.repository.rootPath,
+    ctx.baseBranch,
+  );
+  if (!mergeBaseSha) {
+    void vscode.window.showInformationMessage(
+      t('{0}: cannot determine merge-base with {1}.', EXTENSION_NAME, ctx.baseBranch),
+    );
+    return;
+  }
+
   const baseUri = vscode.Uri.from({
     scheme: DIFF_PROVIDER_SCHEME,
-    authority: 'base',
+    authority: 'merge-base',
     path: `/${normalized}`,
-    query: ctx.baseBranch,
+    query: mergeBaseSha,
   });
 
   try {
@@ -1351,7 +1368,7 @@ async function openDiffCommand(): Promise<void> {
       'vscode.diff',
       baseUri,
       doc.uri,
-      `${ctx.baseBranch} ↔ ${normalized}`,
+      `${ctx.baseBranch} merge-base ↔ ${normalized}`,
       { preview: true },
     );
   } catch (err) {
