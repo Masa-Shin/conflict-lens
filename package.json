@@ -70,8 +70,13 @@
         "category": "%conflictLens.command.category%"
       },
       {
-        "command": "conflictLens.openDiff",
-        "title": "%conflictLens.command.openDiff.title%",
+        "command": "conflictLens.showBaseChanges",
+        "title": "%conflictLens.command.showBaseChanges.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
+        "command": "conflictLens.previewConflict",
+        "title": "%conflictLens.command.previewConflict.title%",
         "category": "%conflictLens.command.category%"
       },
       {
@@ -110,13 +115,13 @@
         },
         "conflictLens.showGutterIcon": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "scope": "window",
           "description": "%conflictLens.config.showGutterIcon.description%"
         },
         "conflictLens.showFileDecorationColors": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "scope": "window",
           "description": "%conflictLens.config.showFileDecorationColors.description%"
         },

@@ -294,11 +294,11 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       t('Changed relative to {0}', baseEscaped),
     );
     md.appendMarkdown(
-      `\n\n[${t('Open diff')}](command:conflictLens.openDiff)`,
+      `\n\n[${t('Show base changes')}](command:conflictLens.showBaseChanges)`,
     );
     // Whitelist only our diff command so generic `command:?` URIs cannot
     // execute when the user hovers a decoration in a hostile workspace.
-    md.isTrusted = { enabledCommands: ['conflictLens.openDiff'] };
+    md.isTrusted = { enabledCommands: ['conflictLens.showBaseChanges'] };
     return md;
   }
 }

@@ -39,7 +39,7 @@ describe('runMergeFile (integration)', () => {
     expect(result.content).toBe('A\nB-theirs\nC\n');
   });
 
-  it('returns three-way markers when both sides modify the same line', async () => {
+  it('returns standard conflict markers when both sides modify the same line', async () => {
     const result = await runMergeFile(
       runner,
       repo,
@@ -49,11 +49,13 @@ describe('runMergeFile (integration)', () => {
     );
     expect(result.conflictCount).toBeGreaterThan(0);
     expect(result.content).toContain('<<<<<<< ours');
-    expect(result.content).toContain('||||||| base');
     expect(result.content).toContain('=======');
     expect(result.content).toContain('>>>>>>> theirs');
     expect(result.content).toContain('B-ours');
     expect(result.content).toContain('B-theirs');
+    // We deliberately stopped passing --diff3, so the base section
+    // and its `||||||| base` divider should NOT appear.
+    expect(result.content).not.toContain('||||||| base');
   });
 
   it('emits an empty ours section when ours deletes a line that theirs modifies', async () => {
@@ -65,14 +67,13 @@ describe('runMergeFile (integration)', () => {
       'A\nB-theirs\nC\n',
     );
     expect(result.conflictCount).toBeGreaterThan(0);
-    // The "ours" section between <<<<<<< and ||||||| should have no
+    // The "ours" section between <<<<<<< and ======= should have no
     // lines because ours deleted that line.
     const lines = result.content.split('\n');
     const startIdx = lines.findIndex((l) => l === '<<<<<<< ours');
-    const midIdx = lines.findIndex((l) => l === '||||||| base');
+    const midIdx = lines.findIndex((l) => l === '=======');
     expect(startIdx).toBeGreaterThanOrEqual(0);
     expect(midIdx).toBeGreaterThan(startIdx);
-    // Lines between markers should be empty (the slice is just the markers).
     const oursSection = lines.slice(startIdx + 1, midIdx);
     expect(oursSection).toEqual([]);
   });

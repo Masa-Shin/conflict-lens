@@ -8,7 +8,8 @@
   "conflictLens.command.selectBaseBranch.title": "Select Base Branch",
   "conflictLens.command.refresh.title": "Refresh",
   "conflictLens.command.showChangedFiles.title": "Show Changed Files",
-  "conflictLens.command.openDiff.title": "Open Diff",
+  "conflictLens.command.showBaseChanges.title": "Show Base Branch Changes",
+  "conflictLens.command.previewConflict.title": "Preview Conflict",
   "conflictLens.command.showOutputChannel.title": "Show Output Channel",
   "conflictLens.command.category": "Conflict Lens",
 

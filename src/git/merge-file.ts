@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import type { GitRunner } from './runner';
 
 export interface MergeFileResult {
-  /** Merged content with conflict markers in `--diff3` style. */
+  /** Merged content with standard `<<<<<<<` / `=======` / `>>>>>>>` conflict markers. */
   readonly content: string;
   /**
    * Number of conflicts. `git merge-file` returns this as the exit code
@@ -15,10 +15,12 @@ export interface MergeFileResult {
 }
 
 /**
- * Run a three-way merge with `git merge-file -p --diff3` against the
- * three string contents and return the merged output with conflict
- * markers. Used by the strong-highlight pipeline to locate the precise
- * lines that will conflict, in `ours` coordinates.
+ * Run a three-way merge with `git merge-file -p` against the three
+ * string contents and return the merged output with standard
+ * `<<<<<<<` / `=======` / `>>>>>>>` conflict markers. Used by the
+ * strong-highlight pipeline to locate the precise lines that will
+ * conflict, in `ours` coordinates, and by the conflict-view command to
+ * preview what `git merge` itself would write.
  *
  * `git merge-file` only accepts file paths, so the three contents are
  * written into a single per-call tmpdir and removed in `finally`. On
@@ -29,11 +31,12 @@ export interface MergeFileResult {
  *
  * Flags:
  *  - `-p`: write to stdout, leaving the input files alone.
- *  - `--diff3`: include the base section between `|||||||` markers so
- *    the parser can identify the end of the "ours" range.
- *  - `-L`: fixed labels (`ours` / `base` / `theirs`) so callers do not
- *    have to predict what tmpfile name git would otherwise stamp into
- *    the marker line.
+ *  - `-L`: fixed labels (`ours` / `theirs`) so callers do not have to
+ *    predict what tmpfile name git would otherwise stamp into the
+ *    marker line. The base label is still required by `git merge-file`
+ *    even though `--diff3` is not passed (it would otherwise pick up
+ *    the tmpfile name on systems that surface the base label in error
+ *    messages).
  *  - `--end-of-options`: hardening against unusual file names.
  *
  * Exit code semantics (`git merge-file(1)`):
@@ -64,7 +67,6 @@ export async function runMergeFile(
       [
         'merge-file',
         '-p',
-        '--diff3',
         '-L',
         'ours',
         '-L',

@@ -114,8 +114,8 @@
 | `conflictLens.remoteName` | `origin` | string | 自動検出で使うリモート名 |
 | `conflictLens.enableConflictPrediction` | `true` | bool | コンフリクト予測を有効にするか |
 | `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーにハイライト位置を表示するか |
-| `conflictLens.showGutterIcon` | `true` | bool | 行番号横にアイコンを表示するか |
-| `conflictLens.showFileDecorationColors` | `true` | bool | Explorer 上でファイル名を色付けするか |
+| `conflictLens.showGutterIcon` | `false` | bool | 行番号横にアイコンを表示するか |
+| `conflictLens.showFileDecorationColors` | `false` | bool | Explorer 上でファイル名を色付けするか |
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | リモート更新検知の間隔（分）。`0` で無効 |
 | `conflictLens.largeFileHunkThreshold` | `200` | 1-10000 | 変更箇所がこの数を超えるファイルは装飾しない |

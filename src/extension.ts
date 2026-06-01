@@ -20,6 +20,7 @@ import {
 import { listChangedFilesOnBase } from './git/changed-files';
 import { resolveMergeBase } from './git/diff';
 import type { BlobReader } from './git/blob';
+import { runMergeFile } from './git/merge-file';
 import { runMergeTree } from './git/merge-tree';
 import {
   checkRemoteForUpdates,
@@ -77,8 +78,8 @@ const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
 const LARGE_FILE_HUNK_THRESHOLD_SETTING = 'largeFileHunkThreshold';
 /**
- * Custom URI scheme used by the "Open Diff" command to feed the
- * base-side blob into VSCode's built-in diff editor. URIs look like
+ * Custom URI scheme used by the "Show Base Branch Changes" command to
+ * feed the base-side blob into VSCode's built-in diff editor. URIs look like
  * `conflict-lens://base/<repo-relative-path>?<ref>` where the query
  * carries the git ref (typically `origin/main`); the content provider
  * fetches the blob via the same long-lived `cat-file --batch` that
@@ -481,14 +482,14 @@ function readWeakDecorationSettings(): WeakDecorationSettings {
   const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return {
     showOverviewRuler: cfg.get<boolean>(SHOW_OVERVIEW_RULER_SETTING, true),
-    showGutterIcon: cfg.get<boolean>(SHOW_GUTTER_ICON_SETTING, true),
+    showGutterIcon: cfg.get<boolean>(SHOW_GUTTER_ICON_SETTING, false),
   };
 }
 
 function readFileDecorationSettings(): FileDecorationSettings {
   const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return {
-    showColors: cfg.get<boolean>(SHOW_FILE_DECORATION_COLORS_SETTING, true),
+    showColors: cfg.get<boolean>(SHOW_FILE_DECORATION_COLORS_SETTING, false),
     showBadges: cfg.get<boolean>(SHOW_FILE_DECORATION_BADGES_SETTING, true),
   };
 }
@@ -1307,7 +1308,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
       'conflictLens.showChangedFiles',
       showChangedFilesCommand,
     ),
-    vscode.commands.registerCommand('conflictLens.openDiff', openDiffCommand),
+    vscode.commands.registerCommand(
+      'conflictLens.showBaseChanges',
+      showBaseChangesCommand,
+    ),
+    vscode.commands.registerCommand(
+      'conflictLens.previewConflict',
+      previewConflictCommand,
+    ),
   );
 }
 
@@ -1411,19 +1419,33 @@ async function showChangedFilesCommand(): Promise<void> {
   }
 }
 
-async function openDiffCommand(): Promise<void> {
+/**
+ * Resolve the active editor down to (context, baseBranch, doc, repo-relative
+ * path) or return `undefined` after surfacing the appropriate user-facing
+ * message. Shared by `showBaseChangesCommand` and `previewConflictCommand`
+ * because their entry-point validation is identical.
+ */
+async function resolveActiveTarget(): Promise<
+  | {
+      ctx: LiveContext;
+      baseBranch: string;
+      doc: vscode.TextDocument;
+      relativeFilePath: string;
+    }
+  | undefined
+> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     void vscode.window.showInformationMessage(
       t('{0}: no active editor.', EXTENSION_NAME),
     );
-    return;
+    return undefined;
   }
   if (currentState.kind !== 'live') {
     void vscode.window.showInformationMessage(
       t('{0}: not available in this workspace.', EXTENSION_NAME),
     );
-    return;
+    return undefined;
   }
   const ctx = currentState.context;
   // Capture baseBranch into a typed-as-string local before any await:
@@ -1434,45 +1456,141 @@ async function openDiffCommand(): Promise<void> {
     void vscode.window.showInformationMessage(
       t('{0}: not available in this workspace.', EXTENSION_NAME),
     );
-    return;
+    return undefined;
   }
   const doc = editor.document;
-  if (doc.uri.scheme !== 'file') return;
+  if (doc.uri.scheme !== 'file') return undefined;
 
   const within = await isFileWithinRepository(doc.uri.fsPath, ctx.repository.rootPath);
   if (!within) {
     void vscode.window.showInformationMessage(
       t('{0}: file is not inside the repository.', EXTENSION_NAME),
     );
-    return;
+    return undefined;
   }
   const relative = path.relative(ctx.repository.rootPath, doc.uri.fsPath);
   const normalized = relative.split(path.sep).join('/');
-  if (normalized === '' || normalized.startsWith('..')) return;
+  if (normalized === '' || normalized.startsWith('..')) return undefined;
 
-  // LEFT side: the file as it currently exists on the base branch's tip.
-  // RIGHT side: the user's editable buffer. This shows "base side
-  // currently looks like this; my side currently looks like this",
-  // which is what users intuitively expect from a "diff against base"
-  // command.
+  return { ctx, baseBranch, doc, relativeFilePath: normalized };
+}
+
+/**
+ * Open a diff editor that shows how this file looks on the base branch
+ * compared to the user's local buffer. Paired visually with the weak
+ * (yellow) highlight, which marks the lines base touched.
+ */
+async function showBaseChangesCommand(): Promise<void> {
+  const target = await resolveActiveTarget();
+  if (!target) return;
+  const { baseBranch, doc, relativeFilePath } = target;
+
+  // LEFT side: the user's local buffer (the starting point).
+  // RIGHT side: the file as it currently exists on the base branch's
+  // tip — the thing the user wants to look at. Putting base on the
+  // right matches the mental model "show me what base currently has",
+  // and the read-only side ends up where the user is looking.
   const baseUri = vscode.Uri.from({
     scheme: DIFF_PROVIDER_SCHEME,
     authority: 'base',
-    path: `/${normalized}`,
+    path: `/${relativeFilePath}`,
     query: baseBranch,
   });
 
   try {
     await vscode.commands.executeCommand(
       'vscode.diff',
-      baseUri,
       doc.uri,
-      `${baseBranch} ↔ ${normalized}`,
+      baseUri,
+      `${relativeFilePath} ↔ ${baseBranch}`,
       { preview: true },
     );
   } catch (err) {
     runtime?.logChannel.warn(`vscode.diff failed: ${stringifyError(err)}`);
   }
+}
+
+/**
+ * Open a preview document showing the trial-merge output (with the same
+ * `<<<<<<<` / `|||||||` / `=======` / `>>>>>>>` markers `git merge` itself
+ * would write). Paired visually with the strong (red) highlight.
+ */
+async function previewConflictCommand(): Promise<void> {
+  const target = await resolveActiveTarget();
+  if (!target) return;
+  const { ctx, baseBranch, doc, relativeFilePath } = target;
+  await openConflictView(ctx, baseBranch, doc, relativeFilePath);
+}
+
+/**
+ * Open the trial-merge output (with the same `<<<<<<<` / `|||||||` /
+ * `=======` / `>>>>>>>` markers that `git merge` itself would write)
+ * as an untitled document. Used by the strong-highlight hover so the
+ * user can preview exactly what the conflict will look like once they
+ * actually merge.
+ */
+async function openConflictView(
+  ctx: LiveContext,
+  baseBranch: string,
+  doc: vscode.TextDocument,
+  relativeFilePath: string,
+): Promise<void> {
+  const mergeBaseSha = await resolveMergeBase(
+    ctx.environment.runner,
+    ctx.repository.rootPath,
+    baseBranch,
+  );
+  if (!mergeBaseSha) {
+    void vscode.window.showInformationMessage(
+      t('{0}: cannot determine merge-base with {1}.', EXTENSION_NAME, baseBranch),
+    );
+    return;
+  }
+
+  let baseContent: string;
+  let theirsContent: string;
+  try {
+    [baseContent, theirsContent] = await Promise.all([
+      ctx.readBlob(mergeBaseSha, relativeFilePath),
+      ctx.readBlob(baseBranch, relativeFilePath),
+    ]);
+  } catch (err) {
+    runtime?.logChannel.warn(`openConflictView readBlob failed: ${stringifyError(err)}`);
+    void vscode.window.showInformationMessage(
+      t('{0}: cannot read base-side content for the conflict view.', EXTENSION_NAME),
+    );
+    return;
+  }
+
+  let merged;
+  try {
+    merged = await runMergeFile(
+      ctx.environment.runner,
+      ctx.repository.rootPath,
+      doc.getText(),
+      baseContent,
+      theirsContent,
+    );
+  } catch (err) {
+    runtime?.logChannel.warn(`openConflictView merge-file failed: ${stringifyError(err)}`);
+    void vscode.window.showInformationMessage(
+      t('{0}: failed to generate the conflict view.', EXTENSION_NAME),
+    );
+    return;
+  }
+
+  if (merged.conflictCount === 0) {
+    void vscode.window.showInformationMessage(
+      t('{0}: no conflicts detected in {1}.', EXTENSION_NAME, relativeFilePath),
+    );
+    return;
+  }
+
+  const newDoc = await vscode.workspace.openTextDocument({
+    content: merged.content,
+    language: doc.languageId,
+  });
+  await vscode.window.showTextDocument(newDoc, { preview: true });
 }
 
 async function setEnabledCommand(value: boolean): Promise<void> {
