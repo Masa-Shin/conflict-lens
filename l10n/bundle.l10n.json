@@ -40,6 +40,7 @@
   "Fetch now": "Fetch now",
   "{0}: fetched updates for {1}.": "{0}: fetched updates for {1}.",
   "{0}: failed to fetch {1}.": "{0}: failed to fetch {1}.",
+  "{0}: multi-root workspace detected. Only the first folder ({1}) is monitored.": "{0}: multi-root workspace detected. Only the first folder ({1}) is monitored.",
   "Select": "Select",
   "(no commits)": "(no commits)",
   "(rebasing)": "(rebasing)",

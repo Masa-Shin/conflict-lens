@@ -209,7 +209,8 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       `(conflict prediction: ${environment.supportsConflictPrediction ? 'enabled' : 'disabled'}).`,
   );
 
-  const primaryFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const folders = vscode.workspace.workspaceFolders;
+  const primaryFolder = folders?.[0]?.uri.fsPath;
   const repoResult: TargetRepositoryResult = await detectTargetRepository({
     gitApi: environment.gitApi,
     runner: environment.runner,
@@ -221,6 +222,20 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
     return;
   }
   log?.info(`Target repository: ${repoResult.repository.rootPath}.`);
+
+  // Spec §3.1.3 / §5.5: MVP monitors only the first workspace folder.
+  // Surface the limit once per session so users with a multi-root
+  // workspace know why other folders look unmonitored.
+  if (folders && folders.length > 1) {
+    notifyOnce(
+      'multi-root',
+      t(
+        '{0}: multi-root workspace detected. Only the first folder ({1}) is monitored.',
+        EXTENSION_NAME,
+        folders[0].name,
+      ),
+    );
+  }
 
   const initialGitState = await safeDetectGitState(environment, repoResult.repository);
   log?.info(`Initial git state: ${initialGitState.kind}.`);
