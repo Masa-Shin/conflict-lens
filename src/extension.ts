@@ -76,8 +76,6 @@ const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
 const AUTO_FETCH_SETTING = 'autoFetchOnRemoteUpdate';
 const LARGE_FILE_HUNK_THRESHOLD_SETTING = 'largeFileHunkThreshold';
-/** Upper bound on the timeout of a single auto-fetch invocation. */
-const FETCH_TIMEOUT_MS = 60_000;
 /**
  * Custom URI scheme used by the "Open Diff" command to feed the
  * base-side blob into VSCode's built-in diff editor. URIs look like
@@ -903,11 +901,15 @@ async function handleRemoteBehind(
 }
 
 /**
- * Fetch the base branch's remote. Prefers vscode.git's
- * `Repository.fetch` because it integrates with the user's credential
- * helper / passphrase prompts; falls back to a direct spawn when the
- * built-in API does not surface a fetch method (older VSCode versions)
- * or rejects.
+ * Fetch the base branch's remote via vscode.git's `Repository.fetch`.
+ *
+ * The runner-spawn fallback was removed because it could not actually
+ * succeed for the cases where vscode.git's fetch would have failed:
+ * SECURE_ARGS sets `core.sshCommand=` (blocks SSH transport) and
+ * SECURE_ENV sets `GIT_ASKPASS=true` / `SSH_ASKPASS=true` (silently
+ * fails credential prompts). Relaxing those for one command would
+ * undermine the global hardening, so we surface a "run git fetch
+ * manually" message instead when the built-in path is unavailable.
  */
 async function tryFetch(ctx: LiveContext, baseBranch: string): Promise<boolean> {
   const split = await splitRemoteBranch(
@@ -921,49 +923,36 @@ async function tryFetch(ctx: LiveContext, baseBranch: string): Promise<boolean> 
   }
 
   const handle = ctx.repository.handle;
-  if (typeof handle.fetch === 'function') {
-    try {
-      await handle.fetch({ remote: split.remote, ref: split.branch });
-      runtime?.logChannel.info(
-        `vscode.git fetched ${split.remote}/${split.branch}.`,
-      );
-      void vscode.window.showInformationMessage(
-        t('{0}: fetched updates for {1}.', EXTENSION_NAME, baseBranch),
-      );
-      return true;
-    } catch (err) {
-      runtime?.logChannel.warn(
-        `vscode.git fetch failed for ${split.remote}/${split.branch}: ${stringifyError(err)}`,
-      );
-    }
+  if (typeof handle.fetch !== 'function') {
+    runtime?.logChannel.warn(
+      'vscode.git did not surface a fetch method; cannot auto-fetch.',
+    );
+    void vscode.window.showInformationMessage(
+      t(
+        '{0}: cannot auto-fetch on this VSCode version. Please run "git fetch" manually.',
+        EXTENSION_NAME,
+      ),
+    );
+    return false;
   }
 
-  // Fallback: direct spawn.
   try {
-    const result = await ctx.environment.runner.run(
-      ['fetch', '--end-of-options', split.remote, split.branch],
-      { cwd: ctx.repository.rootPath, timeoutMs: FETCH_TIMEOUT_MS },
-    );
-    if (result.exitCode !== 0) {
-      runtime?.logChannel.warn(
-        `git fetch exited ${result.exitCode}: ${result.stderr.trim()}`,
-      );
-      void vscode.window.showWarningMessage(
-        t('{0}: failed to fetch {1}.', EXTENSION_NAME, baseBranch),
-      );
-      return false;
-    }
-    runtime?.logChannel.info(`Spawn-fetched ${split.remote}/${split.branch}.`);
+    await handle.fetch({ remote: split.remote, ref: split.branch });
+    runtime?.logChannel.info(`vscode.git fetched ${split.remote}/${split.branch}.`);
     void vscode.window.showInformationMessage(
       t('{0}: fetched updates for {1}.', EXTENSION_NAME, baseBranch),
     );
     return true;
   } catch (err) {
     runtime?.logChannel.warn(
-      `git fetch threw for ${split.remote}/${split.branch}: ${stringifyError(err)}`,
+      `vscode.git fetch failed for ${split.remote}/${split.branch}: ${stringifyError(err)}`,
     );
     void vscode.window.showWarningMessage(
-      t('{0}: failed to fetch {1}.', EXTENSION_NAME, baseBranch),
+      t(
+        '{0}: failed to fetch {1}. See output channel; you may need to run "git fetch" manually.',
+        EXTENSION_NAME,
+        baseBranch,
+      ),
     );
     return false;
   }
