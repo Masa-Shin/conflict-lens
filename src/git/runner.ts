@@ -97,7 +97,13 @@ export const SECURE_ARGS: readonly string[] = Object.freeze([
   '-c', `core.hooksPath=${NULL_DEVICE}`,
   '-c', 'gpg.program=false',
   '-c', 'protocol.ext.allow=never',
-  '-c', 'protocol.file.allow=never',
+  // `=user` (not `=never`) allows top-level commands invoked by Conflict
+  // Lens to use the `file://` transport — relevant for legitimate
+  // local-mirror remotes and for tests that point `origin` at a local
+  // bare repo. `=user` still blocks *nested* uses (e.g. a hostile
+  // submodule URL during a recursive operation), which is the actual
+  // threat model.
+  '-c', 'protocol.file.allow=user',
   '-c', 'uploadpack.packObjectsHook=',
   '-c', 'merge.conflictStyle=merge',
   '-c', 'diff.renames=true',
