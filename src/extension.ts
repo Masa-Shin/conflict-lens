@@ -1318,13 +1318,23 @@ async function openDiffCommand(): Promise<void> {
     );
     return;
   }
-  if (currentState.kind !== 'live' || !currentState.context.baseBranch) {
+  if (currentState.kind !== 'live') {
     void vscode.window.showInformationMessage(
       t('{0}: not available in this workspace.', EXTENSION_NAME),
     );
     return;
   }
   const ctx = currentState.context;
+  // Capture baseBranch into a typed-as-string local before any await:
+  // narrowing on `currentState` (a module-level let) is pessimistically
+  // widened across awaits, but a const binding survives.
+  const baseBranch = ctx.baseBranch;
+  if (!baseBranch) {
+    void vscode.window.showInformationMessage(
+      t('{0}: not available in this workspace.', EXTENSION_NAME),
+    );
+    return;
+  }
   const doc = editor.document;
   if (doc.uri.scheme !== 'file') return;
 
@@ -1347,11 +1357,11 @@ async function openDiffCommand(): Promise<void> {
   const mergeBaseSha = await resolveMergeBase(
     ctx.environment.runner,
     ctx.repository.rootPath,
-    ctx.baseBranch,
+    baseBranch,
   );
   if (!mergeBaseSha) {
     void vscode.window.showInformationMessage(
-      t('{0}: cannot determine merge-base with {1}.', EXTENSION_NAME, ctx.baseBranch),
+      t('{0}: cannot determine merge-base with {1}.', EXTENSION_NAME, baseBranch),
     );
     return;
   }
@@ -1368,7 +1378,7 @@ async function openDiffCommand(): Promise<void> {
       'vscode.diff',
       baseUri,
       doc.uri,
-      `${ctx.baseBranch} merge-base ↔ ${normalized}`,
+      `${baseBranch} merge-base ↔ ${normalized}`,
       { preview: true },
     );
   } catch (err) {
