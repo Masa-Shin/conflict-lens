@@ -92,14 +92,25 @@
 
 ### 差分エディタで詳細を見る
 
-ハイライトが出ている場合、ベースブランチにおけるコードと、ローカルにおけるコードを左右に並べて比較することが可能です。
+ベースブランチでの現在の内容と、自分のローカルの内容を左右に並べて比較できます。
 
 << 画像 >>
 
-起動方法は 2 通りです。
+起動方法:
 
-- ハイライトされた行のホバー表示に出る「Open diff」リンクをクリックする
-- コマンドパレットから `Conflict Lens: Open Diff` を実行する
+- ハイライトされた行のホバーメニューから「Show base changes」リンクをクリック
+- コマンドパレットから `Conflict Lens: Show Base Branch Changes` を実行
+
+### コンフリクトの内容を確認する
+
+コンフリクトが予想される場合、そのコンフリクト結果を表示します。
+
+<< 画像 >>
+
+起動方法:
+
+- 赤くハイライトされた行のホバーメニューから「Preview conflict」リンクをクリック
+- コマンドパレットから `Conflict Lens: Preview Conflict` を実行
 
 ### 一時的に無効化
 
@@ -137,8 +148,10 @@
 | `Conflict Lens: Refresh` | キャッシュを破棄して再計算 |
 | `Conflict Lens: Select Base Branch` | ベースブランチを選択 |
 | `Conflict Lens: Show Changed Files` | 変更されたファイル一覧 |
-| `Conflict Lens: Open Diff` | 差分エディタを開く |
+| `Conflict Lens: Show Base Branch Changes` | 現在のファイルとベースブランチの差分を表示
+| `Conflict Lens: Preview Conflict` | 予想されるコンフリクトを新規エディタで表示 |
 | `Conflict Lens: Show Output Channel` | ログを表示 |
+
 
 ## トラブルシューティング
 
@@ -181,6 +194,10 @@ npm run build   # esbuild
 ```
 
 `F5` で Extension Development Host を起動して動作確認できます。
+
+## プライバシー
+
+本拡張は使用状況・テレメトリ等のデータを一切外部送信しません。Git の実行とローカル設定の読み書き以外のネットワーク通信は行いません。
 
 ## ライセンス
 

@@ -23,6 +23,11 @@
     "pull request",
     "code review"
   ],
+  "preview": true,
+  "galleryBanner": {
+    "color": "#FFF8E1",
+    "theme": "light"
+  },
   "main": "./dist/extension.js",
   "l10n": "./l10n",
   "extensionDependencies": [
