@@ -10,5 +10,10 @@
   "{0}: open a folder to use Conflict Lens.": "{0}: open a folder to use Conflict Lens.",
   "{0}: workspace is not a git repository.": "{0}: workspace is not a git repository.",
   "{0}: workspace is a submodule; not supported in MVP.": "{0}: workspace is a submodule; not supported in MVP.",
-  "{0}: timed out waiting for the built-in Git extension.": "{0}: timed out waiting for the built-in Git extension."
+  "{0}: timed out waiting for the built-in Git extension.": "{0}: timed out waiting for the built-in Git extension.",
+  "{0}: repository has no commits yet.": "{0}: repository has no commits yet.",
+  "{0}: highlighting paused while rebase is in progress.": "{0}: highlighting paused while rebase is in progress.",
+  "{0}: highlighting paused while merge is in progress.": "{0}: highlighting paused while merge is in progress.",
+  "{0}: highlighting paused while cherry-pick is in progress.": "{0}: highlighting paused while cherry-pick is in progress.",
+  "{0}: highlighting paused while revert is in progress.": "{0}: highlighting paused while revert is in progress."
 }
