@@ -1,3 +1,4 @@
+import { stringifyError } from '../util/error';
 import { createGitRunner, type GitRunner } from './runner';
 import type { VscodeGitApi } from './vscode-git-api';
 
@@ -14,6 +15,12 @@ export interface GitEnvironment {
   readonly version: ParsedGitVersion;
   /** True iff version >= 2.38 (supports `merge-tree --write-tree`). */
   readonly supportsConflictPrediction: boolean;
+  /**
+   * The vscode.git API handle obtained as part of resolution. Cached here so
+   * callers do not have to invoke `getAPI(1)` a second time (which could
+   * have side effects if the host extension is not idempotent).
+   */
+  readonly gitApi: VscodeGitApi;
 }
 
 export type GitEnvironmentResult =
@@ -49,16 +56,9 @@ export interface VscodeExtensionLike {
 /**
  * Resolve the git binary path via `vscode.git` and verify its version.
  *
- * Steps:
- *  1. Activate vscode.git if needed; surface "vscode-git-unavailable" otherwise.
- *  2. Read `gitApi.git.path`; if missing, surface "git-not-found".
- *  3. Run `git --version`; if it fails to spawn, surface "git-not-found".
- *  4. Parse the version string; reject versions below MIN_GIT_VERSION.
- *  5. Otherwise return an `ok` environment with a flag indicating whether
- *     strong highlighting (>=2.38) is available.
- *
- * The caller is responsible for turning each non-`ok` variant into the
- * appropriate user feedback (status bar text, notification, etc.).
+ * On success the returned environment includes the resolved `gitApi` handle
+ * so callers (e.g. `detectTargetRepository`) do not have to dig into the
+ * extension exports a second time.
  */
 export async function resolveGitEnvironment(
   vscodeGitExt: VscodeExtensionLike | undefined,
@@ -134,7 +134,7 @@ export async function resolveGitEnvironment(
     };
   }
 
-  if (compareVersion(version, MIN_GIT_VERSION) < 0) {
+  if (compareMajorMinor(version, MIN_GIT_VERSION) < 0) {
     return { kind: 'git-too-old', version };
   }
 
@@ -144,18 +144,20 @@ export async function resolveGitEnvironment(
       runner,
       version,
       supportsConflictPrediction:
-        compareVersion(version, STRONG_HIGHLIGHT_MIN_VERSION) >= 0,
+        compareMajorMinor(version, STRONG_HIGHLIGHT_MIN_VERSION) >= 0,
+      gitApi,
     },
   };
 }
 
 /**
- * Parse the first "git version X.Y.Z[...]" line of `git --version` output.
- * Accepts both upstream ("git version 2.45.2") and Apple Git
- * ("git version 2.39.3 (Apple Git-146)") formats.
+ * Parse "git version X.Y.Z[...]" from the start of `git --version` output.
+ * The leading anchor `^` rejects strings like `"foogit version 1.2.3"` and
+ * the trailing `(?:\s|$)` requires a real word boundary so version-like
+ * substrings buried in other output are not picked up. See spec §5.5 C1.
  */
 export function parseGitVersion(output: string): ParsedGitVersion | undefined {
-  const match = output.match(/git version (\d+)\.(\d+)(?:\.(\d+))?/);
+  const match = output.match(/^git version (\d+)\.(\d+)(?:\.(\d+))?(?:\s|$)/);
   if (!match) {
     return undefined;
   }
@@ -174,15 +176,16 @@ export function parseGitVersion(output: string): ParsedGitVersion | undefined {
   };
 }
 
-export function compareVersion(
+/**
+ * Compare two versions by **major.minor only**. Patch is intentionally
+ * ignored because the only gates that matter here (2.30 minimum, 2.38
+ * conflict-prediction) are at the minor level. Use a different helper when
+ * patch-level precision is required.
+ */
+export function compareMajorMinor(
   v: ParsedGitVersion,
   ref: { major: number; minor: number },
 ): number {
   if (v.major !== ref.major) return v.major - ref.major;
   return v.minor - ref.minor;
-}
-
-function stringifyError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
 }

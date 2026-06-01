@@ -120,19 +120,22 @@ function repositoryContains(
 async function classifyRepository(
   handle: VscodeGitRepository,
   runner: GitRunner,
-  fallbackCwd: string,
+  _fallbackCwd: string,
 ): Promise<TargetRepositoryResult> {
+  // Canonical path is a hard contract of TargetRepository.rootPath. If
+  // realpath fails (deleted directory, permission revoked between detection
+  // and classification), the repository is effectively unusable: bail out.
   let rootPath: string;
   try {
     rootPath = fs.realpathSync(handle.rootUri.fsPath);
   } catch {
-    rootPath = handle.rootUri.fsPath;
+    return { kind: 'not-a-repository' };
   }
 
   // Exclude submodules.
   const result = await runner.run(
     ['rev-parse', '--show-superproject-working-tree'],
-    { cwd: rootPath || fallbackCwd },
+    { cwd: rootPath },
   );
   if (result.exitCode === 0) {
     const superproject = result.stdout.trim();
@@ -140,8 +143,8 @@ async function classifyRepository(
       return { kind: 'submodule', superprojectPath: superproject };
     }
   }
-  // If rev-parse fails, treat the repository as usable (best effort) so a
-  // half-broken setup does not silently disable the extension.
+  // If rev-parse itself fails for an unknown reason we still treat the
+  // repository as usable (best effort) rather than disabling the extension.
 
   return { kind: 'ok', repository: { rootPath, handle } };
 }
@@ -171,14 +174,18 @@ export function isSamePathOrUnder(candidatePath: string, containerPath: string):
  *
  * `repoRootPath` is expected to be already canonical (e.g. from
  * `TargetRepository.rootPath`).
+ *
+ * This is async because it becomes a per-file hot path once the
+ * FileDecorationProvider lands (Phase 9). Sync I/O here would block the
+ * extension host on every Explorer redraw (spec §5.4).
  */
-export function isFileWithinRepository(
+export async function isFileWithinRepository(
   filePath: string,
   repoRootPath: string,
-): boolean {
+): Promise<boolean> {
   let stat: fs.Stats;
   try {
-    stat = fs.lstatSync(filePath);
+    stat = await fs.promises.lstat(filePath);
   } catch {
     return false;
   }
@@ -187,7 +194,7 @@ export function isFileWithinRepository(
   }
   let canonical: string;
   try {
-    canonical = fs.realpathSync(filePath);
+    canonical = await fs.promises.realpath(filePath);
   } catch {
     return false;
   }

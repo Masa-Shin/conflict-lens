@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MIN_GIT_VERSION,
   STRONG_HIGHLIGHT_MIN_VERSION,
-  compareVersion,
+  compareMajorMinor,
   parseGitVersion,
   resolveGitEnvironment,
   type VscodeExtensionLike,
@@ -33,7 +33,7 @@ describe('parseGitVersion', () => {
   });
 });
 
-describe('compareVersion', () => {
+describe('compareMajorMinor', () => {
   const v = (major: number, minor: number) => ({
     raw: `${major}.${minor}`,
     major,
@@ -42,24 +42,24 @@ describe('compareVersion', () => {
   });
 
   it('compares by major first', () => {
-    expect(compareVersion(v(3, 0), { major: 2, minor: 99 })).toBeGreaterThan(0);
-    expect(compareVersion(v(1, 99), { major: 2, minor: 0 })).toBeLessThan(0);
+    expect(compareMajorMinor(v(3, 0), { major: 2, minor: 99 })).toBeGreaterThan(0);
+    expect(compareMajorMinor(v(1, 99), { major: 2, minor: 0 })).toBeLessThan(0);
   });
 
   it('compares by minor when major equal', () => {
-    expect(compareVersion(v(2, 38), { major: 2, minor: 30 })).toBeGreaterThan(0);
-    expect(compareVersion(v(2, 29), { major: 2, minor: 30 })).toBeLessThan(0);
-    expect(compareVersion(v(2, 30), { major: 2, minor: 30 })).toBe(0);
+    expect(compareMajorMinor(v(2, 38), { major: 2, minor: 30 })).toBeGreaterThan(0);
+    expect(compareMajorMinor(v(2, 29), { major: 2, minor: 30 })).toBeLessThan(0);
+    expect(compareMajorMinor(v(2, 30), { major: 2, minor: 30 })).toBe(0);
   });
 
   it('considers 2.38 the strong-highlight boundary', () => {
-    expect(compareVersion(v(2, 37), STRONG_HIGHLIGHT_MIN_VERSION)).toBeLessThan(0);
-    expect(compareVersion(v(2, 38), STRONG_HIGHLIGHT_MIN_VERSION)).toBe(0);
+    expect(compareMajorMinor(v(2, 37), STRONG_HIGHLIGHT_MIN_VERSION)).toBeLessThan(0);
+    expect(compareMajorMinor(v(2, 38), STRONG_HIGHLIGHT_MIN_VERSION)).toBe(0);
   });
 
   it('considers 2.30 the minimum supported boundary', () => {
-    expect(compareVersion(v(2, 29), MIN_GIT_VERSION)).toBeLessThan(0);
-    expect(compareVersion(v(2, 30), MIN_GIT_VERSION)).toBe(0);
+    expect(compareMajorMinor(v(2, 29), MIN_GIT_VERSION)).toBeLessThan(0);
+    expect(compareMajorMinor(v(2, 30), MIN_GIT_VERSION)).toBe(0);
   });
 });
 

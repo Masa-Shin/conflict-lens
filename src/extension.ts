@@ -9,7 +9,6 @@ import {
   resolveGitEnvironment,
   type GitEnvironment,
   type GitEnvironmentResult,
-  type ParsedGitVersion,
 } from './git/binary';
 import { listRemoteBranches } from './git/branches';
 import {
@@ -23,8 +22,15 @@ import {
   type GitState,
 } from './git/state';
 import { t } from './l10n';
+import { assertNever, stringifyError } from './util/error';
 
 const EXTENSION_NAME = 'Conflict Lens';
+/**
+ * Re-evaluate git state at most once per this many milliseconds. Matches the
+ * spec §3.4 internal-constant for FileDecorationProvider coalesce so that
+ * "git add"-driven `Repository.state.onDidChange` storms do not turn into
+ * spawn storms. See spec §4.1 "発火頻度のガード".
+ */
 const STATE_EVALUATION_DEBOUNCE_MS = 100;
 const CONFIG_NAMESPACE = 'conflictLens';
 const BASE_BRANCH_SETTING = 'baseBranch';
@@ -96,12 +102,9 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       `(conflict prediction: ${environment.supportsConflictPrediction ? 'enabled' : 'disabled'}).`,
   );
 
-  const gitApi = (
-    gitExt!.exports as { getAPI(version: number): import('./git/vscode-git-api').VscodeGitApi }
-  ).getAPI(1);
   const primaryFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const repoResult: TargetRepositoryResult = await detectTargetRepository({
-    gitApi,
+    gitApi: environment.gitApi,
     runner: environment.runner,
     primaryWorkspaceFolderPath: primaryFolder,
   });
@@ -306,7 +309,7 @@ function handleGitEnvironmentFailure(result: GitEnvironmentResult): void {
       });
       return;
     case 'git-too-old': {
-      const version = formatVersion(result.version);
+      const version = result.version.raw;
       log?.warn(`git ${version} is below the minimum supported version (2.30).`);
       setState({
         kind: 'unavailable',
@@ -320,7 +323,12 @@ function handleGitEnvironmentFailure(result: GitEnvironmentResult): void {
       return;
     }
     case 'ok':
+      // Unreachable: callers branch on result.kind before invoking this
+      // helper. Kept as an exhaustiveness witness; assertNever would catch
+      // a missing variant if GitEnvironmentResult grows another option.
       return;
+    default:
+      assertNever(result);
   }
 }
 
@@ -366,7 +374,10 @@ function handleRepositoryFailure(result: TargetRepositoryResult): void {
       });
       return;
     case 'ok':
+      // Unreachable: see comment in handleGitEnvironmentFailure.
       return;
+    default:
+      assertNever(result);
   }
 }
 
@@ -409,6 +420,8 @@ function renderStatusBar(state: ExtensionState): void {
       statusBarItem.tooltip = tooltipFor(context);
       return;
     }
+    default:
+      assertNever(state);
   }
 }
 
@@ -436,6 +449,8 @@ function tooltipFor(context: LiveContext): string {
         );
       }
       return t('{0}: no base branch selected.', EXTENSION_NAME);
+    default:
+      return assertNever(context.gitState);
   }
 }
 
@@ -535,15 +550,6 @@ function debounce<T extends (...args: never[]) => void>(
       fn(...args);
     }, delayMs);
   };
-}
-
-function formatVersion(v: ParsedGitVersion): string {
-  return v.raw;
-}
-
-function stringifyError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
 }
 
 export function deactivate(): void {

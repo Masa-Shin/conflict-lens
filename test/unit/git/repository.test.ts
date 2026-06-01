@@ -57,31 +57,31 @@ describe('isFileWithinRepository', () => {
     return { repoRoot, insideFile, outsideFile };
   }
 
-  it('accepts a regular file under the repo root', () => {
+  it('accepts a regular file under the repo root', async () => {
     const { repoRoot, insideFile } = makeRepoTree();
-    expect(isFileWithinRepository(insideFile, repoRoot)).toBe(true);
+    expect(await isFileWithinRepository(insideFile, repoRoot)).toBe(true);
   });
 
-  it('rejects a file outside the repo root', () => {
+  it('rejects a file outside the repo root', async () => {
     const { repoRoot, outsideFile } = makeRepoTree();
-    expect(isFileWithinRepository(outsideFile, repoRoot)).toBe(false);
+    expect(await isFileWithinRepository(outsideFile, repoRoot)).toBe(false);
   });
 
-  it('rejects a symlink, even if its target is inside the repo', () => {
+  it('rejects a symlink, even if its target is inside the repo', async () => {
     const { repoRoot, insideFile } = makeRepoTree();
     const linkPath = path.join(repoRoot, 'link-to-inside');
     fs.symlinkSync(insideFile, linkPath);
     // Symlinks are excluded outright (spec §3.1.3 / §5.5 B5).
-    expect(isFileWithinRepository(linkPath, repoRoot)).toBe(false);
+    expect(await isFileWithinRepository(linkPath, repoRoot)).toBe(false);
   });
 
-  it('rejects a non-existent path', () => {
+  it('rejects a non-existent path', async () => {
     const { repoRoot } = makeRepoTree();
     const missing = path.join(repoRoot, 'does', 'not', 'exist');
-    expect(isFileWithinRepository(missing, repoRoot)).toBe(false);
+    expect(await isFileWithinRepository(missing, repoRoot)).toBe(false);
   });
 
-  it('rejects a path whose realpath escapes via a parent-dir symlink', () => {
+  it('rejects a path whose realpath escapes via a parent-dir symlink', async () => {
     const { repoRoot, outsideFile } = makeRepoTree();
     // Set up: /repo/aliased-outside -> /outside, then test /repo/aliased-outside/leak.ts
     const aliasedOutside = path.join(repoRoot, 'aliased-outside');
@@ -90,7 +90,7 @@ describe('isFileWithinRepository', () => {
     // lstat on the leaf is a regular file (not a symlink), but realpath of
     // any ancestor segment expands to /outside, so the final canonical
     // location is outside the repo.
-    expect(isFileWithinRepository(escapingPath, repoRoot)).toBe(false);
+    expect(await isFileWithinRepository(escapingPath, repoRoot)).toBe(false);
   });
 
   it('does not treat /repo-malicious-prefix as inside /repo (prefix attack)', () => {
