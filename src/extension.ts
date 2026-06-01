@@ -390,6 +390,11 @@ async function refreshBaseBranch(): Promise<void> {
     applyWeakDecorationSettings();
     applyFileDecorationSettings();
     scheduleDecorationRefresh();
+    // A successful resolution clears the dedupe keys for base-branch
+    // notifications so that if the user later breaks the configuration
+    // again we will warn them once more this session.
+    oneShotNotificationsShown.delete('configured-invalid');
+    oneShotNotificationsShown.delete('none-found');
     lastNotifiedRemoteSha = undefined;
     startOrRestartRemoteCheckTimer();
     return;
