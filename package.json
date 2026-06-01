@@ -24,14 +24,46 @@
   },
   "contributes": {
     "commands": [
-      { "command": "conflictLens.enable", "title": "%conflictLens.command.enable.title%", "category": "%conflictLens.command.category%" },
-      { "command": "conflictLens.disable", "title": "%conflictLens.command.disable.title%", "category": "%conflictLens.command.category%" },
-      { "command": "conflictLens.toggle", "title": "%conflictLens.command.toggle.title%", "category": "%conflictLens.command.category%" },
-      { "command": "conflictLens.selectBaseBranch", "title": "%conflictLens.command.selectBaseBranch.title%", "category": "%conflictLens.command.category%" },
-      { "command": "conflictLens.refresh", "title": "%conflictLens.command.refresh.title%", "category": "%conflictLens.command.category%" },
-      { "command": "conflictLens.showChangedFiles", "title": "%conflictLens.command.showChangedFiles.title%", "category": "%conflictLens.command.category%" },
-      { "command": "conflictLens.openDiff", "title": "%conflictLens.command.openDiff.title%", "category": "%conflictLens.command.category%" },
-      { "command": "conflictLens.showOutputChannel", "title": "%conflictLens.command.showOutputChannel.title%", "category": "%conflictLens.command.category%" }
+      {
+        "command": "conflictLens.enable",
+        "title": "%conflictLens.command.enable.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
+        "command": "conflictLens.disable",
+        "title": "%conflictLens.command.disable.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
+        "command": "conflictLens.toggle",
+        "title": "%conflictLens.command.toggle.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
+        "command": "conflictLens.selectBaseBranch",
+        "title": "%conflictLens.command.selectBaseBranch.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
+        "command": "conflictLens.refresh",
+        "title": "%conflictLens.command.refresh.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
+        "command": "conflictLens.showChangedFiles",
+        "title": "%conflictLens.command.showChangedFiles.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
+        "command": "conflictLens.openDiff",
+        "title": "%conflictLens.command.openDiff.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
+        "command": "conflictLens.showOutputChannel",
+        "title": "%conflictLens.command.showOutputChannel.title%",
+        "category": "%conflictLens.command.category%"
+      }
     ],
     "configuration": {
       "type": "object",
@@ -51,7 +83,11 @@
         },
         "conflictLens.deletedLineMarkerPosition": {
           "type": "string",
-          "enum": ["nextLine", "previousLine", "none"],
+          "enum": [
+            "nextLine",
+            "previousLine",
+            "none"
+          ],
           "default": "nextLine",
           "scope": "window",
           "description": "%conflictLens.config.deletedLineMarkerPosition.description%"
@@ -163,10 +199,14 @@
     "vscode:prepublish": "npm run build:prod"
   },
   "devDependencies": {
+    "@types/diff": "^7.0.2",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.74.0",
     "esbuild": "^0.28.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.7"
+  },
+  "dependencies": {
+    "diff": "^9.0.0"
   }
 }
