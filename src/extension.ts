@@ -17,8 +17,10 @@ import {
   createBlobReaderFromBatch,
   GitCatFileBatch,
 } from './git/cat-file-batch';
+import { listChangedFilesOnBase } from './git/changed-files';
 import { resolveMergeBase } from './git/diff';
 import type { BlobReader } from './git/blob';
+import { runMergeTree } from './git/merge-tree';
 import {
   detectTargetRepository,
   isFileWithinRepository,
@@ -66,6 +68,15 @@ const SHOW_GUTTER_ICON_SETTING = 'showGutterIcon';
 const ENABLE_CONFLICT_PREDICTION_SETTING = 'enableConflictPrediction';
 const SHOW_FILE_DECORATION_COLORS_SETTING = 'showFileDecorationColors';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
+/**
+ * Custom URI scheme used by the "Open Diff" command to feed the
+ * base-side blob into VSCode's built-in diff editor. URIs look like
+ * `conflict-lens://base/<repo-relative-path>?<ref>` where the query
+ * carries the git ref (typically `origin/main`); the content provider
+ * fetches the blob via the same long-lived `cat-file --batch` that
+ * powers the highlight pipeline.
+ */
+const DIFF_PROVIDER_SCHEME = 'conflict-lens';
 
 interface RuntimeState {
   logChannel: vscode.LogOutputChannel;
@@ -137,11 +148,18 @@ export function activate(context: vscode.ExtensionContext): void {
   const fileDecorations = new FileDecorationCoordinator(
     readFileDecorationSettings(),
   );
+  const diffContentProvider = new BaseSideContentProvider(() =>
+    currentState.kind === 'live' ? currentState.context.readBlob : undefined,
+  );
   context.subscriptions.push(
     weakDecorations,
     strongDecorations,
     fileDecorations,
     vscode.window.registerFileDecorationProvider(fileDecorations),
+    vscode.workspace.registerTextDocumentContentProvider(
+      DIFF_PROVIDER_SCHEME,
+      diffContentProvider,
+    ),
   );
 
   runtime = {
@@ -915,21 +933,160 @@ function registerCommands(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand('conflictLens.toggle', toggleEnabledCommand),
     vscode.commands.registerCommand('conflictLens.refresh', refreshCommand),
+    vscode.commands.registerCommand(
+      'conflictLens.showChangedFiles',
+      showChangedFilesCommand,
+    ),
+    vscode.commands.registerCommand('conflictLens.openDiff', openDiffCommand),
   );
+}
 
-  // Phase 10 deferred: showChangedFiles and openDiff still stubbed.
-  const stubs: ReadonlyArray<[command: string, label: string]> = [
-    ['conflictLens.showChangedFiles', 'Show Changed Files'],
-    ['conflictLens.openDiff', 'Open Diff'],
-  ];
-  for (const [command, label] of stubs) {
-    context.subscriptions.push(
-      vscode.commands.registerCommand(command, () => {
-        const message = t("{0}: '{1}' is not implemented yet.", EXTENSION_NAME, label);
-        runtime?.logChannel.warn(message);
-        void vscode.window.showInformationMessage(message);
-      }),
+/**
+ * Serves the base-side blob via VSCode's TextDocumentContentProvider so
+ * the diff editor can render a read-only view. The actual blob bytes
+ * come from the same `BlobReader` the highlight pipeline uses, so they
+ * benefit from the persistent `cat-file --batch` connection.
+ */
+class BaseSideContentProvider implements vscode.TextDocumentContentProvider {
+  constructor(private readonly getReadBlob: () => BlobReader | undefined) {}
+
+  async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
+    const readBlob = this.getReadBlob();
+    if (!readBlob) return '';
+    const ref = uri.query;
+    const filePath = uri.path.replace(/^\//, '');
+    if (!ref || !filePath) return '';
+    try {
+      return await readBlob(ref, filePath);
+    } catch (err) {
+      // Render the error as a comment-like header inside the diff so the
+      // user sees *why* the base side is empty instead of a silent blank.
+      return `// Conflict Lens: ${stringifyError(err)}\n`;
+    }
+  }
+}
+
+async function showChangedFilesCommand(): Promise<void> {
+  if (currentState.kind !== 'live') {
+    void vscode.window.showInformationMessage(
+      t('{0}: not available in this workspace.', EXTENSION_NAME),
     );
+    return;
+  }
+  const ctx = currentState.context;
+  if (!ctx.baseBranch) {
+    void vscode.window.showInformationMessage(
+      t('{0}: no base branch selected.', EXTENSION_NAME),
+    );
+    return;
+  }
+
+  const runner = ctx.environment.runner;
+  const repoRoot = ctx.repository.rootPath;
+  const baseBranch = ctx.baseBranch;
+  const strongEnabled = isStrongHighlightEnabled();
+  let files: string[];
+  let conflictedSet = new Set<string>();
+  try {
+    const [changedArr, mergeTreeResult] = await Promise.all([
+      listChangedFilesOnBase(runner, repoRoot, baseBranch),
+      strongEnabled
+        ? runMergeTree(runner, repoRoot, baseBranch)
+        : Promise.resolve({ kind: 'clean' as const, treeSha: '' }),
+    ]);
+    files = changedArr;
+    if (mergeTreeResult.kind === 'conflicted') {
+      conflictedSet = new Set(mergeTreeResult.conflictedPaths);
+    }
+  } catch (err) {
+    runtime?.logChannel.warn(`showChangedFiles failed: ${stringifyError(err)}`);
+    void vscode.window.showWarningMessage(
+      t('{0}: failed to list changed files.', EXTENSION_NAME),
+    );
+    return;
+  }
+  if (files.length === 0) {
+    void vscode.window.showInformationMessage(
+      t('{0}: no files changed relative to {1}.', EXTENSION_NAME, baseBranch),
+    );
+    return;
+  }
+
+  // Sort: conflicted files float to the top so they catch the eye, then
+  // alphabetical within each group for a stable order.
+  files.sort((a, b) => {
+    const ac = conflictedSet.has(a) ? 0 : 1;
+    const bc = conflictedSet.has(b) ? 0 : 1;
+    if (ac !== bc) return ac - bc;
+    return a.localeCompare(b);
+  });
+
+  const conflictLabel = t('Predicted conflict');
+  const items: vscode.QuickPickItem[] = files.map((f) => ({
+    label: f,
+    description: conflictedSet.has(f) ? conflictLabel : undefined,
+  }));
+  const picked = await vscode.window.showQuickPick(items, {
+    title: `${EXTENSION_NAME}: ${baseBranch}`,
+    placeHolder: t('Select a file to open'),
+    matchOnDescription: true,
+  });
+  if (!picked) return;
+
+  try {
+    const uri = vscode.Uri.file(path.join(repoRoot, picked.label));
+    await vscode.window.showTextDocument(uri);
+  } catch (err) {
+    runtime?.logChannel.warn(`showTextDocument failed: ${stringifyError(err)}`);
+  }
+}
+
+async function openDiffCommand(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    void vscode.window.showInformationMessage(
+      t('{0}: no active editor.', EXTENSION_NAME),
+    );
+    return;
+  }
+  if (currentState.kind !== 'live' || !currentState.context.baseBranch) {
+    void vscode.window.showInformationMessage(
+      t('{0}: not available in this workspace.', EXTENSION_NAME),
+    );
+    return;
+  }
+  const ctx = currentState.context;
+  const doc = editor.document;
+  if (doc.uri.scheme !== 'file') return;
+
+  const within = await isFileWithinRepository(doc.uri.fsPath, ctx.repository.rootPath);
+  if (!within) {
+    void vscode.window.showInformationMessage(
+      t('{0}: file is not inside the repository.', EXTENSION_NAME),
+    );
+    return;
+  }
+  const relative = path.relative(ctx.repository.rootPath, doc.uri.fsPath);
+  const normalized = relative.split(path.sep).join('/');
+  if (normalized === '' || normalized.startsWith('..')) return;
+
+  const baseUri = vscode.Uri.from({
+    scheme: DIFF_PROVIDER_SCHEME,
+    authority: 'base',
+    path: `/${normalized}`,
+    query: ctx.baseBranch,
+  });
+
+  try {
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      baseUri,
+      doc.uri,
+      `${ctx.baseBranch} ↔ ${normalized}`,
+      { preview: true },
+    );
+  } catch (err) {
+    runtime?.logChannel.warn(`vscode.diff failed: ${stringifyError(err)}`);
   }
 }
 
