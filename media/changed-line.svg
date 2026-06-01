@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!--
+    Weak-highlight gutter icon (spec §3.2.1).
+    Shape-based to remain distinguishable from the strong-highlight
+    (triangle) icon for users with color-vision deficiency.
+    Color is fixed (not a ThemeColor); the editor background color is
+    themed separately via ThemeColor on the decoration type.
+  -->
+  <rect x="7" y="2" width="2" height="12" rx="0.5" fill="#dba700" fill-opacity="0.9" />
+</svg>
