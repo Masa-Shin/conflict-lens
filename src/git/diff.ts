@@ -80,6 +80,51 @@ export async function runBaseDiff(
 }
 
 /**
+ * Resolve the merge-base SHA between HEAD and `baseBranch`. Returns
+ * `undefined` if no common ancestor exists (e.g. unrelated histories) or
+ * the operation fails for any other reason. The caller should treat
+ * `undefined` as "no weak highlights available right now" rather than as
+ * an error.
+ *
+ * `--end-of-options` hardens against branch names beginning with `--`.
+ */
+export async function resolveMergeBase(
+  runner: GitRunner,
+  repoRootPath: string,
+  baseBranch: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<string | undefined> {
+  const result = await runner.run(
+    ['merge-base', '--end-of-options', 'HEAD', baseBranch],
+    { cwd: repoRootPath, signal: options.signal },
+  );
+  if (result.exitCode !== 0) return undefined;
+  const sha = result.stdout.trim();
+  return sha.length === 0 ? undefined : sha;
+}
+
+/**
+ * Resolve the current HEAD commit SHA. Returns `undefined` if HEAD does
+ * not point to a commit (e.g. unborn branch) or the call fails.
+ * `--verify` plus `^{commit}` guards against tag-to-tree pointers; if
+ * HEAD happens to be an annotated tag, we want the commit it ultimately
+ * resolves to.
+ */
+export async function resolveHeadSha(
+  runner: GitRunner,
+  repoRootPath: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<string | undefined> {
+  const result = await runner.run(
+    ['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}'],
+    { cwd: repoRootPath, signal: options.signal },
+  );
+  if (result.exitCode !== 0) return undefined;
+  const sha = result.stdout.trim();
+  return sha.length === 0 ? undefined : sha;
+}
+
+/**
  * Extract all hunk headers from a unified-diff payload. Non-`@@` lines are
  * ignored, so the function tolerates `diff --git`, `index`, `---`, `+++`
  * preamble lines as well as patch body lines (since we run with

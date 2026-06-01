@@ -1,6 +1,49 @@
-import { describe, expect, it } from 'vitest';
+import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { classifyHunk, parseHunkHeaders } from '../../../src/git/diff';
+import {
+  classifyHunk,
+  parseHunkHeaders,
+  resolveHeadSha,
+  resolveMergeBase,
+} from '../../../src/git/diff';
+import { createGitRunner } from '../../../src/git/runner';
+
+const runner = createGitRunner('git');
+
+function run(
+  command: string,
+  args: readonly string[],
+  cwd: string,
+): Promise<{ exitCode: number; stdout: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@e' },
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const out: Buffer[] = [];
+    child.stdout?.on('data', (c: Buffer) => out.push(c));
+    child.once('error', reject);
+    child.once('close', (code) =>
+      resolve({ exitCode: code ?? -1, stdout: Buffer.concat(out).toString('utf8') }),
+    );
+  });
+}
+
+async function commitFile(
+  repo: string,
+  filePath: string,
+  content: string,
+  message: string,
+): Promise<void> {
+  fs.writeFileSync(path.join(repo, filePath), content);
+  await run('git', ['add', filePath], repo);
+  await run('git', ['commit', '-q', '-m', message], repo);
+}
 
 describe('parseHunkHeaders', () => {
   it('returns [] for empty input', () => {
@@ -79,5 +122,63 @@ describe('classifyHunk', () => {
     [{ oldStart: 1, oldCount: 1, newStart: 1, newCount: 1 }, 'change'],
   ] as const)('classifies %o as %s', (hunk, kind) => {
     expect(classifyHunk(hunk)).toBe(kind);
+  });
+});
+
+describe('resolveMergeBase / resolveHeadSha (integration)', () => {
+  const teardown: string[] = [];
+  afterEach(() => {
+    for (const r of teardown) {
+      try {
+        fs.rmSync(r, { recursive: true, force: true });
+      } catch {
+        // best effort
+      }
+    }
+    teardown.length = 0;
+  });
+
+  async function makeBranchedRepo(): Promise<{
+    repo: string;
+    mergeBase: string;
+    headOnFeature: string;
+  }> {
+    const repo = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-mb-')),
+    );
+    await run('git', ['init', '-q', '-b', 'main'], repo);
+    await run('git', ['config', 'user.email', 't@e'], repo);
+    await run('git', ['config', 'user.name', 'Test'], repo);
+    await run('git', ['config', 'commit.gpgsign', 'false'], repo);
+    await commitFile(repo, 'file.txt', 'a\n', 'merge-base');
+    const mergeBase = (await run('git', ['rev-parse', 'HEAD'], repo)).stdout.trim();
+    await run('git', ['checkout', '-q', '-b', 'feature'], repo);
+    await commitFile(repo, 'file.txt', 'a\nb\n', 'feature change');
+    const headOnFeature = (await run('git', ['rev-parse', 'HEAD'], repo)).stdout.trim();
+    await run('git', ['checkout', '-q', 'main'], repo);
+    await commitFile(repo, 'file.txt', 'a\nc\n', 'base change');
+    await run('git', ['checkout', '-q', 'feature'], repo);
+    return { repo, mergeBase, headOnFeature };
+  }
+
+  it('returns the actual merge-base SHA for two diverged branches', async () => {
+    const fx = await makeBranchedRepo();
+    teardown.push(fx.repo);
+    const result = await resolveMergeBase(runner, fx.repo, 'main');
+    expect(result).toBe(fx.mergeBase);
+  });
+
+  it('resolveHeadSha returns the current HEAD commit', async () => {
+    const fx = await makeBranchedRepo();
+    teardown.push(fx.repo);
+    const result = await resolveHeadSha(runner, fx.repo);
+    expect(result).toBe(fx.headOnFeature);
+  });
+
+  it('resolveMergeBase returns undefined for a non-existent ref', async () => {
+    const fx = await makeBranchedRepo();
+    teardown.push(fx.repo);
+    const result = await resolveMergeBase(runner, fx.repo, 'origin/does-not-exist');
+    expect(result).toBeUndefined();
   });
 });

@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+
 import * as vscode from 'vscode';
 
 import {
@@ -11,13 +13,20 @@ import {
   type GitEnvironmentResult,
 } from './git/binary';
 import { listRemoteBranches } from './git/branches';
+import { resolveHeadSha, resolveMergeBase } from './git/diff';
 import {
   detectTargetRepository,
+  isFileWithinRepository,
   type TargetRepository,
   type TargetRepositoryResult,
 } from './git/repository';
 import { detectGitState, type GitState } from './git/state';
 import { t } from './l10n';
+import {
+  WeakDecorationCoordinator,
+  type WeakDecorationSettings,
+  type WeakHighlightInputs,
+} from './ui/weak-decoration';
 import { assertNever, stringifyError } from './util/error';
 
 const EXTENSION_NAME = 'Conflict Lens';
@@ -28,12 +37,17 @@ const EXTENSION_NAME = 'Conflict Lens';
  * spawn storms. See spec §4.1 "発火頻度のガード".
  */
 const STATE_EVALUATION_DEBOUNCE_MS = 100;
+const DECORATION_REFRESH_DEBOUNCE_MS = 50;
 const CONFIG_NAMESPACE = 'conflictLens';
 const BASE_BRANCH_SETTING = 'baseBranch';
+const ENABLED_SETTING = 'enabled';
+const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
+const SHOW_GUTTER_ICON_SETTING = 'showGutterIcon';
 
 interface RuntimeState {
   logChannel: vscode.LogOutputChannel;
   statusBarItem: vscode.StatusBarItem;
+  weakDecorations: WeakDecorationCoordinator;
 }
 
 interface LiveContext {
@@ -67,7 +81,20 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
-  runtime = { logChannel, statusBarItem };
+  const gutterIconUri = vscode.Uri.joinPath(
+    context.extensionUri,
+    'media',
+    'changed-line.svg',
+  );
+  const initialSettings = readWeakDecorationSettings();
+  const weakDecorations = new WeakDecorationCoordinator(
+    gutterIconUri,
+    initialSettings,
+    '(no base)',
+  );
+  context.subscriptions.push(weakDecorations);
+
+  runtime = { logChannel, statusBarItem, weakDecorations };
   oneShotNotificationsShown = new Set();
   setState({ kind: 'initializing' });
 
@@ -136,6 +163,8 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
         );
         return { kind: 'live', context: { ...prev.context, gitState: next } };
       });
+      // HEAD may have moved (commit, checkout). Re-run weak highlights too.
+      scheduleDecorationRefresh();
     } catch (err) {
       runtime?.logChannel.warn(`State re-evaluation failed: ${stringifyError(err)}`);
     }
@@ -149,10 +178,29 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (event) => {
-      if (!event.affectsConfiguration(`${CONFIG_NAMESPACE}.${BASE_BRANCH_SETTING}`)) return;
-      await refreshBaseBranch();
+      const baseChanged = event.affectsConfiguration(
+        `${CONFIG_NAMESPACE}.${BASE_BRANCH_SETTING}`,
+      );
+      const enabledChanged = event.affectsConfiguration(
+        `${CONFIG_NAMESPACE}.${ENABLED_SETTING}`,
+      );
+      const visualsChanged =
+        event.affectsConfiguration(`${CONFIG_NAMESPACE}.${SHOW_GUTTER_ICON_SETTING}`) ||
+        event.affectsConfiguration(`${CONFIG_NAMESPACE}.${SHOW_OVERVIEW_RULER_SETTING}`);
+
+      if (baseChanged) await refreshBaseBranch();
+      if (visualsChanged) applyWeakDecorationSettings();
+      if (enabledChanged || visualsChanged) scheduleDecorationRefresh();
     }),
   );
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => scheduleDecorationRefresh()),
+    vscode.window.onDidChangeVisibleTextEditors(() => scheduleDecorationRefresh()),
+  );
+
+  // Initial pass for any editors already open at activation.
+  scheduleDecorationRefresh();
 }
 
 async function refreshBaseBranch(): Promise<void> {
@@ -188,6 +236,8 @@ async function refreshBaseBranch(): Promise<void> {
         },
       };
     });
+    applyWeakDecorationSettings();
+    scheduleDecorationRefresh();
     return;
   }
 
@@ -203,6 +253,7 @@ async function refreshBaseBranch(): Promise<void> {
         context: { ...prev.context, baseBranch: undefined, baseBranchSource: undefined },
       };
     });
+    scheduleDecorationRefresh();
     notifyOnce(
       'configured-invalid',
       t(
@@ -224,6 +275,7 @@ async function refreshBaseBranch(): Promise<void> {
       context: { ...prev.context, baseBranch: undefined, baseBranchSource: undefined },
     };
   });
+  scheduleDecorationRefresh();
   notifyOnce(
     'none-found',
     t(
@@ -240,6 +292,135 @@ function readConfiguredBaseBranch(scope: vscode.Uri | undefined): string | undef
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function isEnabled(): boolean {
+  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  return cfg.get<boolean>(ENABLED_SETTING, true);
+}
+
+function readWeakDecorationSettings(): WeakDecorationSettings {
+  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  return {
+    showOverviewRuler: cfg.get<boolean>(SHOW_OVERVIEW_RULER_SETTING, true),
+    showGutterIcon: cfg.get<boolean>(SHOW_GUTTER_ICON_SETTING, true),
+  };
+}
+
+/**
+ * Push the latest visual / label values into the coordinator. Always safe
+ * to call; the coordinator no-ops when nothing changed and returns `true`
+ * only when the underlying decoration type was rebuilt (which means callers
+ * should follow up with a full refresh). We do the follow-up refresh in
+ * `scheduleDecorationRefresh`, which is invoked separately by the config
+ * event handler.
+ */
+function applyWeakDecorationSettings(): void {
+  if (!runtime) return;
+  const baseLabel =
+    currentState.kind === 'live' && currentState.context.baseBranch
+      ? currentState.context.baseBranch
+      : '(no base)';
+  runtime.weakDecorations.refreshVisuals(readWeakDecorationSettings(), baseLabel);
+}
+
+let decorationRefreshPending = false;
+let decorationRefreshTimer: NodeJS.Timeout | undefined;
+
+/**
+ * Coalesce decoration refresh requests. A burst of events
+ * (`onDidChangeActiveTextEditor` + `onDidChangeVisibleTextEditors` fired
+ * when the user splits the editor) becomes a single recompute.
+ */
+function scheduleDecorationRefresh(): void {
+  if (decorationRefreshPending) return;
+  decorationRefreshPending = true;
+  decorationRefreshTimer = setTimeout(() => {
+    decorationRefreshPending = false;
+    decorationRefreshTimer = undefined;
+    void refreshDecorationsNow().catch((err) => {
+      runtime?.logChannel.warn(`refreshDecorations failed: ${stringifyError(err)}`);
+    });
+  }, DECORATION_REFRESH_DEBOUNCE_MS);
+  decorationRefreshTimer.unref?.();
+}
+
+async function refreshDecorationsNow(): Promise<void> {
+  if (!runtime) return;
+  const coordinator = runtime.weakDecorations;
+  const editors = vscode.window.visibleTextEditors;
+
+  if (!isEnabled() || currentState.kind !== 'live') {
+    for (const editor of editors) coordinator.clear(editor);
+    return;
+  }
+  const ctx = currentState.context;
+  if (ctx.gitState.kind !== 'ready' || !ctx.baseBranch) {
+    for (const editor of editors) coordinator.clear(editor);
+    return;
+  }
+
+  const [mergeBaseSha, headSha] = await Promise.all([
+    resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, ctx.baseBranch),
+    resolveHeadSha(ctx.environment.runner, ctx.repository.rootPath),
+  ]);
+  if (!mergeBaseSha || !headSha) {
+    for (const editor of editors) coordinator.clear(editor);
+    return;
+  }
+
+  const inputs: WeakHighlightInputs = {
+    runner: ctx.environment.runner,
+    repoRootPath: ctx.repository.rootPath,
+    baseBranch: ctx.baseBranch,
+    mergeBaseSha,
+    headSha,
+  };
+
+  // We fire updates in parallel; the coordinator's per-key in-flight map
+  // guarantees that two updates for the same `(file, inputs)` cannot
+  // overlap.
+  await Promise.all(
+    editors.map((editor) => applyToEditor(coordinator, editor, inputs)),
+  );
+}
+
+async function applyToEditor(
+  coordinator: WeakDecorationCoordinator,
+  editor: vscode.TextEditor,
+  inputs: WeakHighlightInputs,
+): Promise<void> {
+  const doc = editor.document;
+  if (doc.uri.scheme !== 'file' || doc.isUntitled) {
+    coordinator.clear(editor);
+    return;
+  }
+  const within = await isFileWithinRepository(doc.uri.fsPath, inputs.repoRootPath);
+  if (!within) {
+    coordinator.clear(editor);
+    return;
+  }
+  const relativeFilePath = path.relative(inputs.repoRootPath, doc.uri.fsPath);
+  // path.relative may yield "" for the repo root itself or platform-specific
+  // separators on Windows. Git expects forward slashes for path arguments;
+  // we normalize so that the cache key, git diff -- <path>, and
+  // git show <ref>:<path> all agree on the same string.
+  const normalized = relativeFilePath.split(path.sep).join('/');
+  if (normalized === '' || normalized.startsWith('..')) {
+    coordinator.clear(editor);
+    return;
+  }
+  try {
+    await coordinator.update({
+      editor,
+      relativeFilePath: normalized,
+      inputs,
+    });
+  } catch (err) {
+    runtime?.logChannel.warn(
+      `weakDecorations.update failed for ${normalized}: ${stringifyError(err)}`,
+    );
+  }
 }
 
 type NotificationAction = 'select-base-branch';
@@ -598,6 +779,11 @@ function debounce<T extends (...args: never[]) => void>(
 }
 
 export function deactivate(): void {
+  if (decorationRefreshTimer) {
+    clearTimeout(decorationRefreshTimer);
+    decorationRefreshTimer = undefined;
+  }
+  decorationRefreshPending = false;
   runtime = undefined;
   currentState = { kind: 'initializing' };
   oneShotNotificationsShown = new Set();

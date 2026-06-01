@@ -26,6 +26,7 @@
   "{0}: comparing against {1}. Click to open the output channel.": "{0}: comparing against {1}. Click to open the output channel.",
   "{0}: no base branch selected.": "{0}: no base branch selected.",
   "Choose a remote-tracking branch to compare against": "Choose a remote-tracking branch to compare against",
+  "Changed relative to {0}": "Changed relative to {0}",
   "Select": "Select",
   "(no commits)": "(no commits)",
   "(rebasing)": "(rebasing)",
