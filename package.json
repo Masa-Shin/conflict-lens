@@ -24,6 +24,7 @@
     "code review"
   ],
   "preview": true,
+  "icon": "media/icon.png",
   "galleryBanner": {
     "color": "#FFF8E1",
     "theme": "light"
@@ -136,12 +137,6 @@
           "scope": "window",
           "description": "%conflictLens.config.showFileDecorationBadges.description%"
         },
-        "conflictLens.enableConflictPrediction": {
-          "type": "boolean",
-          "default": true,
-          "scope": "window",
-          "description": "%conflictLens.config.enableConflictPrediction.description%"
-        },
         "conflictLens.remoteCheckIntervalMinutes": {
           "type": "integer",
           "default": 5,
@@ -172,16 +167,6 @@
         }
       },
       {
-        "id": "conflictLens.conflictLineBackground",
-        "description": "%conflictLens.color.conflictLineBackground.description%",
-        "defaults": {
-          "dark": "#f14c4c50",
-          "light": "#b0002050",
-          "highContrast": "#ff000060",
-          "highContrastLight": "#a000208c"
-        }
-      },
-      {
         "id": "conflictLens.changedFileForeground",
         "description": "%conflictLens.color.changedFileForeground.description%",
         "defaults": {
@@ -189,16 +174,6 @@
           "light": "#795e26",
           "highContrast": "#f0e68c",
           "highContrastLight": "#5a4500"
-        }
-      },
-      {
-        "id": "conflictLens.potentialConflictFileForeground",
-        "description": "%conflictLens.color.potentialConflictFileForeground.description%",
-        "defaults": {
-          "dark": "#f14c4c",
-          "light": "#b00020",
-          "highContrast": "#ff0000",
-          "highContrastLight": "#8b0000"
         }
       }
     ]

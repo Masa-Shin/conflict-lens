@@ -18,9 +18,7 @@ export interface MergeFileResult {
  * Run a three-way merge with `git merge-file -p` against the three
  * string contents and return the merged output with standard
  * `<<<<<<<` / `=======` / `>>>>>>>` conflict markers. Used by the
- * strong-highlight pipeline to locate the precise lines that will
- * conflict, in `ours` coordinates, and by the conflict-view command to
- * preview what `git merge` itself would write.
+ * Preview Conflict command to show what `git merge` itself would write.
  *
  * `git merge-file` only accepts file paths, so the three contents are
  * written into a single per-call tmpdir and removed in `finally`. On

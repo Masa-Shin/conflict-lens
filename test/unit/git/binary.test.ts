@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   MIN_GIT_VERSION,
-  STRONG_HIGHLIGHT_MIN_VERSION,
   compareMajorMinor,
   parseGitVersion,
   resolveGitEnvironment,
@@ -50,11 +49,6 @@ describe('compareMajorMinor', () => {
     expect(compareMajorMinor(v(2, 38), { major: 2, minor: 30 })).toBeGreaterThan(0);
     expect(compareMajorMinor(v(2, 29), { major: 2, minor: 30 })).toBeLessThan(0);
     expect(compareMajorMinor(v(2, 30), { major: 2, minor: 30 })).toBe(0);
-  });
-
-  it('considers 2.38 the strong-highlight boundary', () => {
-    expect(compareMajorMinor(v(2, 37), STRONG_HIGHLIGHT_MIN_VERSION)).toBeLessThan(0);
-    expect(compareMajorMinor(v(2, 38), STRONG_HIGHLIGHT_MIN_VERSION)).toBe(0);
   });
 
   it('considers 2.30 the minimum supported boundary', () => {
@@ -125,7 +119,6 @@ describe('resolveGitEnvironment', () => {
     // We don't know the host git version, but we know it should at least parse.
     if (result.kind === 'ok') {
       expect(result.environment.version.major).toBe(2);
-      expect(typeof result.environment.supportsConflictPrediction).toBe('boolean');
     } else {
       // Acceptable when the test host has git < 2.30 or some weird PATH.
       expect(['git-too-old', 'git-not-found']).toContain(result.kind);

@@ -21,7 +21,6 @@ import { listChangedFilesOnBase } from './git/changed-files';
 import { resolveMergeBase } from './git/diff';
 import type { BlobReader } from './git/blob';
 import { runMergeFile } from './git/merge-file';
-import { runMergeTree } from './git/merge-tree';
 import {
   checkRemoteForUpdates,
   splitRemoteBranch,
@@ -33,16 +32,11 @@ import {
   type TargetRepositoryResult,
 } from './git/repository';
 import { detectGitState, type GitState } from './git/state';
-import { subtractRanges } from './diff/range-ops';
 import { t } from './l10n';
 import {
   FileDecorationCoordinator,
   type FileDecorationSettings,
 } from './ui/file-decoration';
-import {
-  StrongDecorationCoordinator,
-  type StrongHighlightInputs,
-} from './ui/strong-decoration';
 import {
   WeakDecorationCoordinator,
   type WeakDecorationSettings,
@@ -72,7 +66,6 @@ const REMOTE_NAME_SETTING = 'remoteName';
 const ENABLED_SETTING = 'enabled';
 const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
 const SHOW_GUTTER_ICON_SETTING = 'showGutterIcon';
-const ENABLE_CONFLICT_PREDICTION_SETTING = 'enableConflictPrediction';
 const SHOW_FILE_DECORATION_COLORS_SETTING = 'showFileDecorationColors';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
@@ -91,7 +84,6 @@ interface RuntimeState {
   logChannel: vscode.LogOutputChannel;
   statusBarItem: vscode.StatusBarItem;
   weakDecorations: WeakDecorationCoordinator;
-  strongDecorations: StrongDecorationCoordinator;
   fileDecorations: FileDecorationCoordinator;
 }
 
@@ -138,19 +130,9 @@ export function activate(context: vscode.ExtensionContext): void {
     'media',
     'changed-line.svg',
   );
-  const strongGutterIconUri = vscode.Uri.joinPath(
-    context.extensionUri,
-    'media',
-    'conflict-line.svg',
-  );
   const initialSettings = readWeakDecorationSettings();
   const weakDecorations = new WeakDecorationCoordinator(
     weakGutterIconUri,
-    initialSettings,
-    '(no base)',
-  );
-  const strongDecorations = new StrongDecorationCoordinator(
-    strongGutterIconUri,
     initialSettings,
     '(no base)',
   );
@@ -162,7 +144,6 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   context.subscriptions.push(
     weakDecorations,
-    strongDecorations,
     fileDecorations,
     vscode.window.registerFileDecorationProvider(fileDecorations),
     vscode.workspace.registerTextDocumentContentProvider(
@@ -175,7 +156,6 @@ export function activate(context: vscode.ExtensionContext): void {
     logChannel,
     statusBarItem,
     weakDecorations,
-    strongDecorations,
     fileDecorations,
   };
   oneShotNotificationsShown = new Set();
@@ -204,8 +184,7 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
   }
   const { environment } = envResult;
   log?.info(
-    `Git ${environment.version.raw} resolved at ${environment.runner.gitPath} ` +
-      `(conflict prediction: ${environment.supportsConflictPrediction ? 'enabled' : 'disabled'}).`,
+    `Git ${environment.version.raw} resolved at ${environment.runner.gitPath}.`,
   );
 
   const folders = vscode.workspace.workspaceFolders;
@@ -291,9 +270,6 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       const enabledChanged = event.affectsConfiguration(
         `${CONFIG_NAMESPACE}.${ENABLED_SETTING}`,
       );
-      const strongEnabledChanged = event.affectsConfiguration(
-        `${CONFIG_NAMESPACE}.${ENABLE_CONFLICT_PREDICTION_SETTING}`,
-      );
       const visualsChanged =
         event.affectsConfiguration(`${CONFIG_NAMESPACE}.${SHOW_GUTTER_ICON_SETTING}`) ||
         event.affectsConfiguration(`${CONFIG_NAMESPACE}.${SHOW_OVERVIEW_RULER_SETTING}`);
@@ -314,7 +290,6 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       if (
         enabledChanged ||
         visualsChanged ||
-        strongEnabledChanged ||
         fileDecorationsChanged ||
         thresholdChanged
       ) {
@@ -507,7 +482,6 @@ function applyWeakDecorationSettings(): void {
   const baseLabel = currentBaseBranchLabel();
   const settings = readWeakDecorationSettings();
   runtime.weakDecorations.refreshVisuals(settings, baseLabel);
-  runtime.strongDecorations.refreshVisuals(settings, baseLabel);
 }
 
 function applyFileDecorationSettings(): void {
@@ -525,11 +499,6 @@ function currentBaseBranchLabel(): string {
   return '(no base)';
 }
 
-function isStrongHighlightEnabled(): boolean {
-  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-  return cfg.get<boolean>(ENABLE_CONFLICT_PREDICTION_SETTING, true);
-}
-
 function readLargeFileHunkThreshold(): number {
   const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   const raw = cfg.get<number>(LARGE_FILE_HUNK_THRESHOLD_SETTING, 200);
@@ -542,33 +511,6 @@ function readLargeFileHunkThreshold(): number {
 let decorationRefreshPending = false;
 let decorationRefreshTimer: NodeJS.Timeout | undefined;
 const documentRefreshTimers = new Map<string, NodeJS.Timeout>();
-
-/**
- * Soft cache of the base-side changed-files set keyed by
- * `(baseBranch, mergeBaseSha)`. Computed lazily via
- * `listChangedFilesOnBase` and shared across every editor's strong
- * compute so we do not re-spawn the same `git diff --name-only` per
- * editor or per keystroke. Invalidated implicitly when the key
- * changes; explicitly cleared by `Conflict Lens: Refresh`.
- */
-let cachedBaseChangedFiles:
-  | { readonly key: string; readonly set: ReadonlySet<string> }
-  | undefined;
-
-async function getBaseChangedFiles(
-  runner: GitEnvironment['runner'],
-  repoRootPath: string,
-  baseBranch: string,
-  mergeBaseSha: string,
-): Promise<ReadonlySet<string>> {
-  const key = `${baseBranch}|${mergeBaseSha}`;
-  const cached = cachedBaseChangedFiles;
-  if (cached && cached.key === key) return cached.set;
-  const list = await listChangedFilesOnBase(runner, repoRootPath, baseBranch);
-  const set: ReadonlySet<string> = new Set(list);
-  cachedBaseChangedFiles = { key, set };
-  return set;
-}
 
 /**
  * Coalesce decoration refresh requests. A burst of events
@@ -644,28 +586,18 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
     readBlob: ctx.readBlob,
     largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
-  const strongEnabled = isStrongHighlightEnabled();
-  const baseChangedFiles = await getBaseChangedFiles(
-    ctx.environment.runner,
-    ctx.repository.rootPath,
-    ctx.baseBranch,
-    mergeBaseSha,
-  );
 
-  await Promise.all(
-    editors.map((e) => applyToEditor(e, inputs, strongEnabled, baseChangedFiles)),
-  );
+  await Promise.all(editors.map((e) => applyToEditor(e, inputs)));
 }
 
 async function refreshDecorationsNow(): Promise<void> {
   if (!runtime) return;
-  const { weakDecorations, strongDecorations, fileDecorations } = runtime;
+  const { weakDecorations, fileDecorations } = runtime;
   const editors = vscode.window.visibleTextEditors;
 
   const clearAll = () => {
     for (const editor of editors) {
       weakDecorations.clear(editor);
-      strongDecorations.clear(editor);
     }
     fileDecorations.clear();
   };
@@ -698,29 +630,16 @@ async function refreshDecorationsNow(): Promise<void> {
     readBlob: ctx.readBlob,
     largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
-  const strongEnabled = isStrongHighlightEnabled();
-
-  const baseChangedFiles = await getBaseChangedFiles(
-    inputs.runner,
-    inputs.repoRootPath,
-    inputs.baseBranch,
-    mergeBaseSha,
-  );
 
   await Promise.all([
-    ...editors.map((editor) =>
-      applyToEditor(editor, inputs, strongEnabled, baseChangedFiles),
-    ),
+    ...editors.map((editor) => applyToEditor(editor, inputs)),
     fileDecorations
-      .refresh(
-        {
-          runner: inputs.runner,
-          repoRootPath: inputs.repoRootPath,
-          baseBranch: inputs.baseBranch,
-          mergeBaseSha,
-        },
-        strongEnabled,
-      )
+      .refresh({
+        runner: inputs.runner,
+        repoRootPath: inputs.repoRootPath,
+        baseBranch: inputs.baseBranch,
+        mergeBaseSha,
+      })
       .catch((err) => {
         runtime?.logChannel.warn(
           `fileDecorations.refresh failed: ${stringifyError(err)}`,
@@ -731,28 +650,22 @@ async function refreshDecorationsNow(): Promise<void> {
 
 /**
  * Validate the editor's document path against the repo and dispatch the
- * weak and (optionally) strong coordinators in parallel. The two
- * coordinators have independent caches and in-flight maps, so running
- * them concurrently does not create cross-coordinator races.
+ * weak coordinator.
  */
 async function applyToEditor(
   editor: vscode.TextEditor,
   inputs: WeakHighlightInputs,
-  strongEnabled: boolean,
-  baseChangedFiles: ReadonlySet<string>,
 ): Promise<void> {
   if (!runtime) return;
-  const { weakDecorations, strongDecorations } = runtime;
+  const { weakDecorations } = runtime;
   const doc = editor.document;
   if (doc.uri.scheme !== 'file' || doc.isUntitled) {
     weakDecorations.clear(editor);
-    strongDecorations.clear(editor);
     return;
   }
   const within = await isFileWithinRepository(doc.uri.fsPath, inputs.repoRootPath);
   if (!within) {
     weakDecorations.clear(editor);
-    strongDecorations.clear(editor);
     return;
   }
   // path.relative may yield "" for the repo root itself or platform-specific
@@ -763,53 +676,10 @@ async function applyToEditor(
   const normalized = relative.split(path.sep).join('/');
   if (normalized === '' || normalized.startsWith('..')) {
     weakDecorations.clear(editor);
-    strongDecorations.clear(editor);
     return;
   }
 
-  // Compute both pipelines in parallel; the orchestrator subtracts the
-  // strong ranges from the weak set so that a line predicted to
-  // conflict is rendered with the strong color only, instead of
-  // stacking the two semi-transparent backgrounds on top of each other.
-  const strongInputs: StrongHighlightInputs = { ...inputs, baseChangedFiles };
-  const startVersion = doc.version;
-  let weakRanges, strongRanges;
-  try {
-    [weakRanges, strongRanges] = await Promise.all([
-      weakDecorations
-        .computeRanges(normalized, inputs, doc)
-        .catch((err) => {
-          runtime?.logChannel.warn(
-            `weakDecorations.compute failed for ${normalized}: ${stringifyError(err)}`,
-          );
-          return [];
-        }),
-      strongEnabled
-        ? strongDecorations
-            .computeRanges(normalized, strongInputs, doc)
-            .catch((err) => {
-              runtime?.logChannel.warn(
-                `strongDecorations.compute failed for ${normalized}: ${stringifyError(err)}`,
-              );
-              return [];
-            })
-        : Promise.resolve([]),
-    ]);
-  } catch (err) {
-    runtime?.logChannel.warn(
-      `applyToEditor compute failed for ${normalized}: ${stringifyError(err)}`,
-    );
-    return;
-  }
-  if (doc.isClosed || doc.version !== startVersion) return;
-
-  const suppressedWeak = subtractRanges(weakRanges, strongRanges);
-  weakDecorations.applyRanges(editor, suppressedWeak);
-  if (strongEnabled) {
-    strongDecorations.applyRanges(editor, strongRanges);
-  } else {
-    strongDecorations.clear(editor);
-  }
+  await weakDecorations.update({ editor, relativeFilePath: normalized, inputs });
 }
 
 type NotificationAction = 'select-base-branch';
@@ -1362,20 +1232,9 @@ async function showChangedFilesCommand(): Promise<void> {
   const runner = ctx.environment.runner;
   const repoRoot = ctx.repository.rootPath;
   const baseBranch = ctx.baseBranch;
-  const strongEnabled = isStrongHighlightEnabled();
   let files: string[];
-  let conflictedSet = new Set<string>();
   try {
-    const [changedArr, mergeTreeResult] = await Promise.all([
-      listChangedFilesOnBase(runner, repoRoot, baseBranch),
-      strongEnabled
-        ? runMergeTree(runner, repoRoot, baseBranch)
-        : Promise.resolve({ kind: 'clean' as const, treeSha: '' }),
-    ]);
-    files = changedArr;
-    if (mergeTreeResult.kind === 'conflicted') {
-      conflictedSet = new Set(mergeTreeResult.conflictedPaths);
-    }
+    files = await listChangedFilesOnBase(runner, repoRoot, baseBranch);
   } catch (err) {
     runtime?.logChannel.warn(`showChangedFiles failed: ${stringifyError(err)}`);
     void vscode.window.showWarningMessage(
@@ -1390,24 +1249,12 @@ async function showChangedFilesCommand(): Promise<void> {
     return;
   }
 
-  // Sort: conflicted files float to the top so they catch the eye, then
-  // alphabetical within each group for a stable order.
-  files.sort((a, b) => {
-    const ac = conflictedSet.has(a) ? 0 : 1;
-    const bc = conflictedSet.has(b) ? 0 : 1;
-    if (ac !== bc) return ac - bc;
-    return a.localeCompare(b);
-  });
+  files.sort((a, b) => a.localeCompare(b));
 
-  const conflictLabel = t('Predicted conflict');
-  const items: vscode.QuickPickItem[] = files.map((f) => ({
-    label: f,
-    description: conflictedSet.has(f) ? conflictLabel : undefined,
-  }));
+  const items: vscode.QuickPickItem[] = files.map((f) => ({ label: f }));
   const picked = await vscode.window.showQuickPick(items, {
     title: `${EXTENSION_NAME}: ${baseBranch}`,
     placeHolder: t('Select a file to open'),
-    matchOnDescription: true,
   });
   if (!picked) return;
 
@@ -1513,7 +1360,9 @@ async function showBaseChangesCommand(): Promise<void> {
 /**
  * Open a preview document showing the trial-merge output (with the same
  * `<<<<<<<` / `|||||||` / `=======` / `>>>>>>>` markers `git merge` itself
- * would write). Paired visually with the strong (red) highlight.
+ * would write). Reachable from the weak-highlight hover and the command
+ * palette; when the trial merge resolves cleanly, surfaces a "no
+ * conflicts" notification instead of opening an empty document.
  */
 async function previewConflictCommand(): Promise<void> {
   const target = await resolveActiveTarget();
@@ -1525,9 +1374,8 @@ async function previewConflictCommand(): Promise<void> {
 /**
  * Open the trial-merge output (with the same `<<<<<<<` / `|||||||` /
  * `=======` / `>>>>>>>` markers that `git merge` itself would write)
- * as an untitled document. Used by the strong-highlight hover so the
- * user can preview exactly what the conflict will look like once they
- * actually merge.
+ * as an untitled document so the user can preview exactly what the
+ * conflict will look like once they actually merge.
  */
 async function openConflictView(
   ctx: LiveContext,
@@ -1615,9 +1463,7 @@ async function toggleEnabledCommand(): Promise<void> {
 async function refreshCommand(): Promise<void> {
   if (!runtime) return;
   runtime.weakDecorations.invalidateAll();
-  runtime.strongDecorations.invalidateAll();
   runtime.fileDecorations.clear();
-  cachedBaseChangedFiles = undefined;
   await refreshBaseBranch();
   scheduleDecorationRefresh();
 }

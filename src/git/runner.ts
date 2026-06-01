@@ -79,7 +79,7 @@ const NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null';
  * the helper would make `git ls-remote` — the only network-bound command
  * this extension issues directly — fail silently against PAT-protected
  * HTTPS remotes. Local-only commands used by this extension
- * (diff / show / merge-tree / merge-file / rev-parse / cat-file /
+ * (diff / show / merge-file / rev-parse / cat-file /
  * for-each-ref / merge-base / check-attr) do not invoke the credential
  * helper, so leaving it untouched is safe for those too.
  */

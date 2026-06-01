@@ -60,7 +60,7 @@ export interface ComputeWeakHighlightsParams {
  *
  * Hunks whose merge-base lines do not survive into the right side
  * (deleted by the user's own changes or unsaved edits) are dropped
- * silently; the strong highlight in Phase 8 will catch the real conflicts.
+ * silently.
  */
 export async function computeWeakHighlights(
   params: ComputeWeakHighlightsParams,

@@ -6,11 +6,7 @@
 
 << ここに画像を入れる >>
 
-また、編集時には実際にコンフリクトが起こるかをチェックし、起こる場合は赤くハイライトします。
-
-<< ここに画像を入れる >>
-
-これらにより、
+これにより、
 - コンフリクトの危険があるコードを開発中にシームレスに検知
 - 他の開発者との修正方針のバッティングを事前検知
 を可能にします。
@@ -43,19 +39,12 @@
 
 << 画像 >>
 
-### マージ時のコンフリクトを予測
-
-編集を行うたび、ベースへのマージ時に実際にコンフリクトする行を赤くハイライトします。
-また該当ファイルにもバッジを表示します。
-
-<< 画像 >>
-
 ## 要件
 
 | | |
 |---|---|
 | VS Code | 1.74 以上 |
-| Git | 2.30 以上 (コンフリクト予測機能は 2.38 以上) |
+| Git | 2.30 以上 |
 
 ## インストール
 
@@ -88,8 +77,6 @@
 
 << 画像 >>
 
-衝突が予測されるファイルは上位に並びます。
-
 ### 差分エディタで詳細を見る
 
 ベースブランチでの現在の内容と、自分のローカルの内容を左右に並べて比較できます。
@@ -103,13 +90,13 @@
 
 ### コンフリクトの内容を確認する
 
-コンフリクトが予想される場合、そのコンフリクト結果を表示します。
+ベースへ取り込んだ場合に起きるコンフリクトの内容を、その場で確認できます。コンフリクトしない場合は「衝突しません」と通知します。
 
 << 画像 >>
 
 起動方法:
 
-- 赤くハイライトされた行のホバーメニューから「Preview conflict」リンクをクリック
+- ハイライトされた行のホバーメニューから「Preview conflict」リンクをクリック
 - コマンドパレットから `Conflict Lens: Preview Conflict` を実行
 
 ### 一時的に無効化
@@ -123,7 +110,6 @@
 | `conflictLens.enabled` | `true` | bool | 拡張全体の on/off |
 | `conflictLens.baseBranch` | `origin/main` | string | 比較対象。空で自動検出 |
 | `conflictLens.remoteName` | `origin` | string | 自動検出で使うリモート名 |
-| `conflictLens.enableConflictPrediction` | `true` | bool | コンフリクト予測を有効にするか |
 | `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーにハイライト位置を表示するか |
 | `conflictLens.showGutterIcon` | `false` | bool | 行番号横にアイコンを表示するか |
 | `conflictLens.showFileDecorationColors` | `false` | bool | Explorer 上でファイル名を色付けするか |
@@ -134,9 +120,7 @@
 ハイライトの色や、Explorer のファイル名色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
 
 - `conflictLens.changedLineBackground` — ベースが変更した行の背景色（デフォルト黄色）
-- `conflictLens.conflictLineBackground` — コンフリクト予測行の背景色（デフォルト赤色）
 - `conflictLens.changedFileForeground` — ベースが変更したファイルのファイル名色
-- `conflictLens.potentialConflictFileForeground` — コンフリクト予測ファイルのファイル名色
 
 ## コマンドリファレンス
 
@@ -170,10 +154,6 @@
 ```sh
 git log --oneline HEAD...origin/main
 ```
-
-**コンフリクト予測だけ出ない**
-
-`conflictLens.enableConflictPrediction` が `true` になっているか確認してください。設定が有効でも、ベースブランチが触っていないファイルはコンフリクト予測の対象外です。
 
 **設定を変えたが反映されない**
 

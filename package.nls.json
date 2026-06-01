@@ -19,15 +19,12 @@
   "conflictLens.config.showOverviewRuler.description": "Show markers in the editor overview ruler.",
   "conflictLens.config.showGutterIcon.description": "Show gutter icons for changed and conflicting lines.",
   "conflictLens.config.showFileDecorationColors.description": "Tint file names in Explorer / Open Editors for changed files.",
-  "conflictLens.config.showFileDecorationBadges.description": "Show warning badges on file names that may conflict.",
-  "conflictLens.config.enableConflictPrediction.description": "Enable strong highlight using git merge-tree (requires Git 2.38+). Disable for very large repositories.",
+  "conflictLens.config.showFileDecorationBadges.description": "Show badges on file names that the base branch has changed.",
   "conflictLens.config.remoteCheckIntervalMinutes.description": "Interval in minutes for polling remote updates with git ls-remote. Set to 0 to disable.",
   "conflictLens.config.largeFileHunkThreshold.description": "Suppress line highlights when a file has more diff hunks than this threshold.",
 
-  "conflictLens.color.changedLineBackground.description": "Background color for lines changed on the base branch (weak highlight).",
-  "conflictLens.color.conflictLineBackground.description": "Background color for lines that conflict with the base branch (strong highlight).",
+  "conflictLens.color.changedLineBackground.description": "Background color for lines changed on the base branch.",
   "conflictLens.color.changedFileForeground.description": "Foreground color for files changed relative to the selected base branch.",
-  "conflictLens.color.potentialConflictFileForeground.description": "Foreground color for files that may conflict with the selected base branch.",
 
   "conflictLens.capabilities.untrustedWorkspaces.description": "Conflict Lens executes git commands and reads workspace settings, so it requires a trusted workspace."
 }

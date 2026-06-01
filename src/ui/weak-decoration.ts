@@ -33,8 +33,7 @@ export interface WeakHighlightInputs {
   readonly readBlob: BlobReader;
   /**
    * Spec §3.4: suppress line decorations when the base-side diff has
-   * more than this many hunks (weak) or the trial merge has this many
-   * conflicts (strong). `0` disables the gate.
+   * more than this many hunks. `0` disables the gate.
    */
   readonly largeFileHunkThreshold: number;
 }
@@ -119,14 +118,9 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
   }
 
   /**
-   * Cache-aware compute. Does not touch the editor. Allows the
-   * orchestrator to await both weak and strong ranges before deciding
-   * how to render them (the strong-over-weak suppression policy is
-   * applied in the caller).
-   *
-   * Returns `[]` when the underlying compute is cancelled or fails in
-   * a way the coordinator wants to swallow; the orchestrator then
-   * applies an empty range.
+   * Cache-aware compute. Does not touch the editor. Returns `[]` when
+   * the underlying compute is cancelled or fails in a way the
+   * coordinator wants to swallow.
    */
   async computeRanges(
     relativeFilePath: string,
@@ -294,11 +288,17 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       t('Changed relative to {0}', baseEscaped),
     );
     md.appendMarkdown(
-      `\n\n[${t('Show base changes')}](command:conflictLens.showBaseChanges)`,
+      `\n\n[${t('Show base changes')}](command:conflictLens.showBaseChanges)` +
+        ` · [${t('Preview conflict')}](command:conflictLens.previewConflict)`,
     );
-    // Whitelist only our diff command so generic `command:?` URIs cannot
+    // Whitelist only our own commands so generic `command:?` URIs cannot
     // execute when the user hovers a decoration in a hostile workspace.
-    md.isTrusted = { enabledCommands: ['conflictLens.showBaseChanges'] };
+    md.isTrusted = {
+      enabledCommands: [
+        'conflictLens.showBaseChanges',
+        'conflictLens.previewConflict',
+      ],
+    };
     return md;
   }
 }

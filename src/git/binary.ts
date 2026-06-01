@@ -13,8 +13,6 @@ export interface ParsedGitVersion {
 export interface GitEnvironment {
   readonly runner: GitRunner;
   readonly version: ParsedGitVersion;
-  /** True iff version >= 2.38 (supports `merge-tree --write-tree`). */
-  readonly supportsConflictPrediction: boolean;
   /**
    * The vscode.git API handle obtained as part of resolution. Cached here so
    * callers do not have to invoke `getAPI(1)` a second time (which could
@@ -31,11 +29,6 @@ export type GitEnvironmentResult =
 
 /** Minimum git version required for any feature (because of `--merge-base`). */
 export const MIN_GIT_VERSION: { major: number; minor: number } = { major: 2, minor: 30 };
-/** Minimum git version required for strong (conflict prediction) highlighting. */
-export const STRONG_HIGHLIGHT_MIN_VERSION: { major: number; minor: number } = {
-  major: 2,
-  minor: 38,
-};
 
 /**
  * Holder for a vscode.Extension-shaped object. We accept the bare minimum so
@@ -143,8 +136,6 @@ export async function resolveGitEnvironment(
     environment: {
       runner,
       version,
-      supportsConflictPrediction:
-        compareMajorMinor(version, STRONG_HIGHLIGHT_MIN_VERSION) >= 0,
       gitApi,
     },
   };

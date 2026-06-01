@@ -15,10 +15,10 @@ Initial pre-release.
 
 - Periodic checks against the remote base branch (`git ls-remote`), with a fetch prompt when it has moved upstream.
 - Yellow line highlights for lines the base branch has touched since the merge-base.
-- Red line highlights and a file badge for lines that will conflict when merging into the base branch.
-- `Conflict Lens: Show Changed Files` — list all files changed on the base branch, sorted with predicted conflicts at the top.
+- A `≠` badge in the Explorer for files the base branch has touched.
+- `Conflict Lens: Show Changed Files` — list all files changed on the base branch.
 - `Conflict Lens: Show Base Branch Changes` — open a side-by-side diff between the base branch and the current buffer.
-- `Conflict Lens: Preview Conflict` — open the predicted merge result with standard `<<<<<<<` / `=======` / `>>>>>>>` markers in a new editor.
+- `Conflict Lens: Preview Conflict` — on demand, open the predicted merge result with standard `<<<<<<<` / `=======` / `>>>>>>>` markers in a new editor.
 - `Conflict Lens: Select Base Branch`, `Refresh`, `Enable`, `Disable`, `Toggle`, `Show Output Channel`.
 - Configurable remote name (`conflictLens.remoteName`) for auto-detecting the base branch.
 - Japanese UI translation via `vscode.l10n`.
