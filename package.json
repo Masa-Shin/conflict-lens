@@ -96,17 +96,6 @@
           "scope": "resource",
           "description": "%conflictLens.config.baseBranch.description%"
         },
-        "conflictLens.deletedLineMarkerPosition": {
-          "type": "string",
-          "enum": [
-            "nextLine",
-            "previousLine",
-            "none"
-          ],
-          "default": "nextLine",
-          "scope": "window",
-          "description": "%conflictLens.config.deletedLineMarkerPosition.description%"
-        },
         "conflictLens.showOverviewRuler": {
           "type": "boolean",
           "default": true,

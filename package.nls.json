@@ -14,7 +14,6 @@
 
   "conflictLens.config.enabled.description": "Enable or disable Conflict Lens.",
   "conflictLens.config.baseBranch.description": "Remote-tracking branch to compare against (e.g. origin/main). If unset, Conflict Lens tries to detect a default.",
-  "conflictLens.config.deletedLineMarkerPosition.description": "Gutter marker position for deletion-only diffs.",
   "conflictLens.config.showOverviewRuler.description": "Show markers in the editor overview ruler.",
   "conflictLens.config.showGutterIcon.description": "Show gutter icons for changed and conflicting lines.",
   "conflictLens.config.showFileDecorationColors.description": "Tint file names in Explorer / Open Editors for changed files.",
