@@ -10,8 +10,16 @@ export function sizeOfRanges(ranges: WeakHighlightRange[]): number {
 }
 
 /**
- * Stable cache key for a `(file, inputs)` combination. The GitRunner is
- * excluded because it is a single shared instance for the entire process.
+ * Stable cache key for a `(file, inputs, documentVersion)` combination.
+ * The GitRunner is excluded because it is a single shared instance for
+ * the entire process.
+ *
+ * `documentVersion` (vscode.TextDocument.version) identifies the exact
+ * right-side buffer content the result was computed against. A new
+ * keystroke increments the version and produces a different key, so the
+ * cache never serves stale ranges. HEAD SHA is not included because the
+ * right side is the buffer, not HEAD — a HEAD movement that doesn't
+ * touch the buffer should still be a cache hit.
  */
 export function cacheKeyFor(
   relativeFilePath: string,
@@ -19,10 +27,10 @@ export function cacheKeyFor(
     readonly repoRootPath: string;
     readonly baseBranch: string;
     readonly mergeBaseSha: string;
-    readonly headSha: string;
   },
+  documentVersion: number,
 ): string {
-  return `${inputs.baseBranch} ${inputs.mergeBaseSha} ${inputs.headSha} ${inputs.repoRootPath} ${relativeFilePath}`;
+  return `${inputs.baseBranch} ${inputs.mergeBaseSha} v${documentVersion} ${inputs.repoRootPath} ${relativeFilePath}`;
 }
 
 /**

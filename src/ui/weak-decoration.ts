@@ -19,13 +19,16 @@ export { cacheKeyFor, escapeMarkdown, sizeOfRanges };
  * Snapshot of all the inputs that determine the weak-highlight ranges of
  * a single file. Both the cache key (sans `runner`) and the compute call
  * are derived from this.
+ *
+ * HEAD SHA is intentionally omitted: with buffer-following the right
+ * side is the editor buffer, not the HEAD blob, so a HEAD movement
+ * without a buffer change must still hit the cache.
  */
 export interface WeakHighlightInputs {
   readonly runner: GitRunner;
   readonly repoRootPath: string;
   readonly baseBranch: string;
   readonly mergeBaseSha: string;
-  readonly headSha: string;
 }
 
 /** Toggleable visuals. Background color / hover always render. */
@@ -58,12 +61,26 @@ export interface UpdateRequest {
  *     `showOverviewRuler`) rebuild the decoration type once; existing
  *     editors must be re-applied externally to pick it up.
  */
+interface InflightEntry {
+  readonly controller: AbortController;
+  readonly promise: Promise<WeakHighlightRange[]>;
+}
+
 export class WeakDecorationCoordinator implements vscode.Disposable {
   private readonly cache: ByteLruCache<string, WeakHighlightRange[]>;
-  private readonly inflight = new Map<string, AbortController>();
+  /**
+   * Active computes keyed by cache key. A second request for the same
+   * key (e.g. two split editors showing the same document at the same
+   * version) attaches to the existing promise instead of spawning a
+   * second git process. Aborted only by `invalidateAll` / `dispose`;
+   * stale-result protection is provided by the post-await version check
+   * rather than per-event cancellation.
+   */
+  private readonly inflight = new Map<string, InflightEntry>();
   private decorationType: vscode.TextEditorDecorationType;
   private settings: WeakDecorationSettings;
   private baseBranchLabel: string;
+  private disposed = false;
 
   constructor(
     private readonly gutterIconUri: vscode.Uri,
@@ -77,46 +94,81 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
   }
 
   /**
-   * Apply weak highlights to `editor`. Cache-hits render synchronously
-   * (one micro-task hop). Cache-misses spawn `computeWeakHighlights` and
-   * cancel any in-flight compute for the same cache key.
+   * Apply weak highlights to `editor`. Cache-hits render synchronously.
+   * Cache-misses spawn `computeWeakHighlights` (or attach to an in-flight
+   * one with the same key). After awaiting we verify that the editor's
+   * document is still at the version we started with; otherwise the
+   * buffer has moved on and the result is discarded.
    */
   async update(request: UpdateRequest): Promise<void> {
     const { editor, relativeFilePath, inputs } = request;
-    const key = cacheKeyFor(relativeFilePath, inputs);
+    const document = editor.document;
+    const startVersion = document.version;
+    const cacheKey = cacheKeyFor(relativeFilePath, inputs, startVersion);
 
-    const cached = this.cache.get(key);
+    const cached = this.cache.get(cacheKey);
     if (cached) {
       this.apply(editor, cached);
       return;
     }
 
-    const previous = this.inflight.get(key);
-    if (previous) previous.abort();
-    const controller = new AbortController();
-    this.inflight.set(key, controller);
+    let entry = this.inflight.get(cacheKey);
+    if (!entry) {
+      entry = this.startCompute(cacheKey, inputs, relativeFilePath, document, startVersion);
+    }
 
     let ranges: WeakHighlightRange[];
     try {
-      ranges = await computeWeakHighlights({
-        runner: inputs.runner,
-        repoRootPath: inputs.repoRootPath,
-        baseBranch: inputs.baseBranch,
-        mergeBaseSha: inputs.mergeBaseSha,
-        relativeFilePath,
-        signal: controller.signal,
-      });
+      ranges = await entry.promise;
     } catch (err) {
-      if (controller.signal.aborted) return;
+      if (entry.controller.signal.aborted || this.disposed) return;
       throw err;
-    } finally {
-      if (this.inflight.get(key) === controller) {
-        this.inflight.delete(key);
-      }
     }
-    if (controller.signal.aborted) return;
-    this.cache.set(key, ranges);
+    if (entry.controller.signal.aborted || this.disposed) return;
+    if (document.isClosed || document.version !== startVersion) return;
     this.apply(editor, ranges);
+  }
+
+  private startCompute(
+    cacheKey: string,
+    inputs: WeakHighlightInputs,
+    relativeFilePath: string,
+    document: vscode.TextDocument,
+    startVersion: number,
+  ): InflightEntry {
+    const controller = new AbortController();
+    const promise = computeWeakHighlights({
+      runner: inputs.runner,
+      repoRootPath: inputs.repoRootPath,
+      baseBranch: inputs.baseBranch,
+      mergeBaseSha: inputs.mergeBaseSha,
+      relativeFilePath,
+      rightContent: document.getText(),
+      signal: controller.signal,
+    });
+    const entry: InflightEntry = { controller, promise };
+    this.inflight.set(cacheKey, entry);
+
+    void promise
+      .then((ranges) => {
+        // Only populate the cache if the result is still valid. Caching
+        // a result computed against a now-stale buffer would be served
+        // to other editors on a future cache hit even after the user
+        // has typed past it.
+        if (controller.signal.aborted || this.disposed) return;
+        if (document.isClosed || document.version !== startVersion) return;
+        this.cache.set(cacheKey, ranges);
+      })
+      .catch(() => {
+        // Errors are surfaced to each awaiter individually; here we only
+        // need to make sure the unhandled-rejection slot is silenced.
+      })
+      .finally(() => {
+        if (this.inflight.get(cacheKey) === entry) {
+          this.inflight.delete(cacheKey);
+        }
+      });
+    return entry;
   }
 
   /** Remove weak highlights from `editor` without touching the cache. */
@@ -147,16 +199,17 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     return visualChanged;
   }
 
-  /** Drop all cached results — call when baseBranch / HEAD invariants change. */
+  /** Drop all cached results — call when baseBranch / merge-base changes. */
   invalidateAll(): void {
     this.cache.clear();
-    for (const ac of this.inflight.values()) ac.abort();
+    for (const entry of this.inflight.values()) entry.controller.abort();
     this.inflight.clear();
   }
 
   dispose(): void {
+    this.disposed = true;
     this.decorationType.dispose();
-    for (const ac of this.inflight.values()) ac.abort();
+    for (const entry of this.inflight.values()) entry.controller.abort();
     this.inflight.clear();
     this.cache.clear();
   }

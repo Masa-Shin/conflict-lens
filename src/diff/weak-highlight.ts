@@ -24,23 +24,30 @@ export interface ComputeWeakHighlightsParams {
   readonly mergeBaseSha: string;
   /** Path relative to repo root. Must already be validated (spec §3.1.3). */
   readonly relativeFilePath: string;
+  /**
+   * Authoritative right-side content. Callers pass the current editor
+   * buffer (`document.getText()`) so that highlights follow user edits in
+   * unsaved files; passing the HEAD blob would be wrong as soon as the
+   * user inserts or deletes a line. For untracked-on-disk files the
+   * caller can read the disk bytes; both routes use this same path.
+   */
+  readonly rightContent: string;
   readonly signal?: AbortSignal;
 }
 
 /**
- * Compute weak-highlight line ranges for the given file, based on the
- * **committed HEAD**. Untracked / buffer-following variants are added in
- * Phase 7.
+ * Compute weak-highlight line ranges for the given file, with line
+ * numbers aligned to `rightContent` (the editor buffer).
  *
  * Pipeline (spec §3.1.1):
  *   1. base-side diff (hunk headers, merge-base coordinates)
- *   2. fetch merge-base blob and HEAD blob via `git show`
- *   3. build a merge-base → HEAD line mapping via in-memory diff
- *   4. translate each hunk's merge-base line range to HEAD coordinates
+ *   2. fetch merge-base blob via `git show`
+ *   3. build a merge-base → right-side line mapping via in-memory diff
+ *   4. translate each hunk's merge-base line range to right-side coordinates
  *
- * Hunks whose merge-base lines do not survive into HEAD (deleted by the
- * user's own changes) are dropped silently; the strong highlight in
- * Phase 8 will catch the real conflicts.
+ * Hunks whose merge-base lines do not survive into the right side
+ * (deleted by the user's own changes or unsaved edits) are dropped
+ * silently; the strong highlight in Phase 8 will catch the real conflicts.
  */
 export async function computeWeakHighlights(
   params: ComputeWeakHighlightsParams,
@@ -51,17 +58,20 @@ export async function computeWeakHighlights(
     baseBranch,
     mergeBaseSha,
     relativeFilePath,
+    rightContent,
     signal,
   } = params;
 
   const hunks = await runBaseDiff(runner, repoRootPath, baseBranch, relativeFilePath, { signal });
   if (hunks.length === 0) return [];
 
-  // Both blob fetches can race in parallel; they're independent.
-  const [leftContent, rightContent] = await Promise.all([
-    showBlob(runner, repoRootPath, mergeBaseSha, relativeFilePath, { signal }),
-    showBlob(runner, repoRootPath, 'HEAD', relativeFilePath, { signal }),
-  ]);
+  const leftContent = await showBlob(
+    runner,
+    repoRootPath,
+    mergeBaseSha,
+    relativeFilePath,
+    { signal },
+  );
   const mapping = buildLineMapping(leftContent, rightContent);
 
   const ranges: WeakHighlightRange[] = [];

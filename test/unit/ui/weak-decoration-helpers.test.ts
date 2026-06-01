@@ -11,22 +11,25 @@ describe('cacheKeyFor', () => {
     repoRootPath: '/repo',
     baseBranch: 'origin/main',
     mergeBaseSha: 'abc123',
-    headSha: 'def456',
   };
 
   it('produces a stable key for identical inputs', () => {
-    expect(cacheKeyFor('src/a.ts', inputs)).toBe(
-      cacheKeyFor('src/a.ts', inputs),
+    expect(cacheKeyFor('src/a.ts', inputs, 7)).toBe(
+      cacheKeyFor('src/a.ts', inputs, 7),
     );
   });
 
   it('differs when any field differs', () => {
-    const k = cacheKeyFor('src/a.ts', inputs);
-    expect(k).not.toBe(cacheKeyFor('src/b.ts', inputs));
-    expect(k).not.toBe(cacheKeyFor('src/a.ts', { ...inputs, baseBranch: 'origin/dev' }));
-    expect(k).not.toBe(cacheKeyFor('src/a.ts', { ...inputs, mergeBaseSha: 'xxx' }));
-    expect(k).not.toBe(cacheKeyFor('src/a.ts', { ...inputs, headSha: 'yyy' }));
-    expect(k).not.toBe(cacheKeyFor('src/a.ts', { ...inputs, repoRootPath: '/other' }));
+    const k = cacheKeyFor('src/a.ts', inputs, 7);
+    expect(k).not.toBe(cacheKeyFor('src/b.ts', inputs, 7));
+    expect(k).not.toBe(cacheKeyFor('src/a.ts', { ...inputs, baseBranch: 'origin/dev' }, 7));
+    expect(k).not.toBe(cacheKeyFor('src/a.ts', { ...inputs, mergeBaseSha: 'xxx' }, 7));
+    expect(k).not.toBe(cacheKeyFor('src/a.ts', { ...inputs, repoRootPath: '/other' }, 7));
+    expect(k).not.toBe(cacheKeyFor('src/a.ts', inputs, 8));
+  });
+
+  it('treats version 0 and a falsy-looking version distinctly from no version', () => {
+    expect(cacheKeyFor('a.ts', inputs, 0)).not.toBe(cacheKeyFor('a.ts', inputs, 1));
   });
 });
 

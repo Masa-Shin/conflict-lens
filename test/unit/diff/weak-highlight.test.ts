@@ -148,16 +148,36 @@ describe('computeWeakHighlights (integration)', () => {
   it('translates a base-side line-3 change into HEAD line 4 (1-line shift)', async () => {
     const fx = await makeFixture();
     teardown.push(fx.repo);
+    const rightContent = fs.readFileSync(path.join(fx.repo, 'file.txt'), 'utf8');
     const ranges = await computeWeakHighlights({
       runner,
       repoRootPath: fx.repo,
       baseBranch: fx.baseBranch,
       mergeBaseSha: fx.mergeBaseSha,
       relativeFilePath: 'file.txt',
+      rightContent,
     });
-    // Base changed merge-base line 3; HEAD prepended 1 line, so it lands on
-    // HEAD line 4.
+    // Base changed merge-base line 3; feature prepended 1 line, so it
+    // lands on right-side line 4.
     expect(ranges).toEqual([{ startLine: 4, endLine: 4, insertion: false }]);
+  });
+
+  it('follows the buffer when rightContent differs from HEAD', async () => {
+    const fx = await makeFixture();
+    teardown.push(fx.repo);
+    // HEAD on feature is ["PREFIX", "L1".."L5"]. Pretend the user typed
+    // an additional leading line that hasn't been committed.
+    const rightContent = 'BUFFER\nPREFIX\nL1\nL2\nL3\nL4\nL5\n';
+    const ranges = await computeWeakHighlights({
+      runner,
+      repoRootPath: fx.repo,
+      baseBranch: fx.baseBranch,
+      mergeBaseSha: fx.mergeBaseSha,
+      relativeFilePath: 'file.txt',
+      rightContent,
+    });
+    // Two leading lines shift merge-base line 3 to right-side line 5.
+    expect(ranges).toEqual([{ startLine: 5, endLine: 5, insertion: false }]);
   });
 
   it('returns [] when the base side did not change the file', async () => {
@@ -167,12 +187,14 @@ describe('computeWeakHighlights (integration)', () => {
     await run('git', ['checkout', '-q', 'main'], fx.repo);
     await run('git', ['reset', '-q', '--hard', fx.mergeBaseSha], fx.repo);
     await run('git', ['checkout', '-q', 'feature'], fx.repo);
+    const rightContent = fs.readFileSync(path.join(fx.repo, 'file.txt'), 'utf8');
     const ranges = await computeWeakHighlights({
       runner,
       repoRootPath: fx.repo,
       baseBranch: fx.baseBranch,
       mergeBaseSha: fx.mergeBaseSha,
       relativeFilePath: 'file.txt',
+      rightContent,
     });
     expect(ranges).toEqual([]);
   });

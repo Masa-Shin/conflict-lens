@@ -13,7 +13,7 @@ import {
   type GitEnvironmentResult,
 } from './git/binary';
 import { listRemoteBranches } from './git/branches';
-import { resolveHeadSha, resolveMergeBase } from './git/diff';
+import { resolveMergeBase } from './git/diff';
 import {
   detectTargetRepository,
   isFileWithinRepository,
@@ -38,6 +38,13 @@ const EXTENSION_NAME = 'Conflict Lens';
  */
 const STATE_EVALUATION_DEBOUNCE_MS = 100;
 const DECORATION_REFRESH_DEBOUNCE_MS = 50;
+/**
+ * Per-document debounce for buffer-following refresh. Higher than the
+ * global decoration refresh because typing fires `onDidChangeTextDocument`
+ * on every keystroke; recomputing too aggressively would saturate git with
+ * spawns and produce visible flicker while the diff is still running.
+ */
+const DOCUMENT_REFRESH_DEBOUNCE_MS = 200;
 const CONFIG_NAMESPACE = 'conflictLens';
 const BASE_BRANCH_SETTING = 'baseBranch';
 const ENABLED_SETTING = 'enabled';
@@ -197,6 +204,17 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(() => scheduleDecorationRefresh()),
     vscode.window.onDidChangeVisibleTextEditors(() => scheduleDecorationRefresh()),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      const doc = event.document;
+      // Skip schemes we never decorate (output, git, search, etc.).
+      if (doc.uri.scheme !== 'file') return;
+      // No textual changes (e.g., dirty-state toggle): nothing to recompute.
+      if (event.contentChanges.length === 0) return;
+      scheduleDocumentRefresh(doc);
+    }),
+    vscode.workspace.onDidCloseTextDocument((doc) => {
+      cancelDocumentRefresh(doc);
+    }),
   );
 
   // Initial pass for any editors already open at activation.
@@ -326,6 +344,7 @@ function applyWeakDecorationSettings(): void {
 
 let decorationRefreshPending = false;
 let decorationRefreshTimer: NodeJS.Timeout | undefined;
+const documentRefreshTimers = new Map<string, NodeJS.Timeout>();
 
 /**
  * Coalesce decoration refresh requests. A burst of events
@@ -345,6 +364,65 @@ function scheduleDecorationRefresh(): void {
   decorationRefreshTimer.unref?.();
 }
 
+/**
+ * Debounced per-document recompute triggered by `onDidChangeTextDocument`.
+ * A fast typist would otherwise cause one git diff + blob fetch per
+ * keystroke; coalescing keeps it bounded to one recompute per ~200ms per
+ * document.
+ */
+function scheduleDocumentRefresh(document: vscode.TextDocument): void {
+  const key = document.uri.toString();
+  const existing = documentRefreshTimers.get(key);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    documentRefreshTimers.delete(key);
+    void refreshDocumentNow(document).catch((err) => {
+      runtime?.logChannel.warn(
+        `document refresh failed for ${document.uri.fsPath}: ${stringifyError(err)}`,
+      );
+    });
+  }, DOCUMENT_REFRESH_DEBOUNCE_MS);
+  timer.unref?.();
+  documentRefreshTimers.set(key, timer);
+}
+
+function cancelDocumentRefresh(document: vscode.TextDocument): void {
+  const key = document.uri.toString();
+  const existing = documentRefreshTimers.get(key);
+  if (!existing) return;
+  clearTimeout(existing);
+  documentRefreshTimers.delete(key);
+}
+
+async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> {
+  if (!runtime || !isEnabled() || currentState.kind !== 'live') return;
+  const ctx = currentState.context;
+  if (ctx.gitState.kind !== 'ready' || !ctx.baseBranch) return;
+  if (document.isClosed) return;
+
+  const editors = vscode.window.visibleTextEditors.filter(
+    (e) => e.document === document,
+  );
+  if (editors.length === 0) return;
+
+  const mergeBaseSha = await resolveMergeBase(
+    ctx.environment.runner,
+    ctx.repository.rootPath,
+    ctx.baseBranch,
+  );
+  if (!mergeBaseSha) return;
+
+  const inputs: WeakHighlightInputs = {
+    runner: ctx.environment.runner,
+    repoRootPath: ctx.repository.rootPath,
+    baseBranch: ctx.baseBranch,
+    mergeBaseSha,
+  };
+
+  const coordinator = runtime.weakDecorations;
+  await Promise.all(editors.map((e) => applyToEditor(coordinator, e, inputs)));
+}
+
 async function refreshDecorationsNow(): Promise<void> {
   if (!runtime) return;
   const coordinator = runtime.weakDecorations;
@@ -360,11 +438,12 @@ async function refreshDecorationsNow(): Promise<void> {
     return;
   }
 
-  const [mergeBaseSha, headSha] = await Promise.all([
-    resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, ctx.baseBranch),
-    resolveHeadSha(ctx.environment.runner, ctx.repository.rootPath),
-  ]);
-  if (!mergeBaseSha || !headSha) {
+  const mergeBaseSha = await resolveMergeBase(
+    ctx.environment.runner,
+    ctx.repository.rootPath,
+    ctx.baseBranch,
+  );
+  if (!mergeBaseSha) {
     for (const editor of editors) coordinator.clear(editor);
     return;
   }
@@ -374,7 +453,6 @@ async function refreshDecorationsNow(): Promise<void> {
     repoRootPath: ctx.repository.rootPath,
     baseBranch: ctx.baseBranch,
     mergeBaseSha,
-    headSha,
   };
 
   // We fire updates in parallel; the coordinator's per-key in-flight map
@@ -784,6 +862,8 @@ export function deactivate(): void {
     decorationRefreshTimer = undefined;
   }
   decorationRefreshPending = false;
+  for (const timer of documentRefreshTimers.values()) clearTimeout(timer);
+  documentRefreshTimers.clear();
   runtime = undefined;
   currentState = { kind: 'initializing' };
   oneShotNotificationsShown = new Set();
