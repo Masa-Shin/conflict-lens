@@ -30,10 +30,9 @@ export interface VscodeGitRepository {
   readonly rootUri: Uri;
   readonly state: VscodeGitRepositoryState;
   /**
-   * Modern vscode.git surfaces a single `fetch(options)` overload.
-   * Declared optional so we can detect at runtime whether the running
-   * VSCode version supports it; the auto-fetch path falls back to the
-   * runner when not present.
+   * Optional because older VS Code builds do not surface this method on
+   * the public Git API. When undefined, the Fetch-now action degrades
+   * to "ask the user to run git fetch manually".
    */
   fetch?(options?: VscodeGitFetchOptions): Promise<void>;
 }

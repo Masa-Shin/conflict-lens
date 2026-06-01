@@ -1,91 +1,109 @@
 # Conflict Lens
 
-ソースコード上でコンフリクトしそうな箇所を自動で検知しハイライトする VS Code 拡張
+ソースコード上でコンフリクトしそうな箇所を自動検知する VS Code 拡張
+
+リモートのベースブランチを定期チェックし、現在開いているファイルが変更されていたら該当行をハイライトします。
 
 << ここに画像を入れる >>
 
+また、編集時には実際にコンフリクトが起こるかをチェックし、起こる場合は赤くハイライトします。
+
+<< ここに画像を入れる >>
+
+これらにより、
+- コンフリクトの危険があるコードを開発中にシームレスに検知
+- 他の開発者との修正方針のバッティングを事前検知
+を可能にします。
+
+## 目次
+
+- [機能](#機能)
+- [要件](#要件)
+- [インストール](#インストール)
+- [使い方](#使い方)
+- [設定リファレンス](#設定リファレンス)
+- [コマンドリファレンス](#コマンドリファレンス)
+- [トラブルシューティング](#トラブルシューティング)
+- [既知の制限](#既知の制限)
+- [開発](#開発)
+- [ライセンス](#ライセンス)
+
 ## 機能
 
-### 弱ハイライト：ベース側の変更を可視化
+### ベースブランチにおける修正の可視化
 
-ベースブランチが変更した行をエディタ上で黄色く表示します。`git diff --merge-base` を頭の中で常時走らせる必要がなくなります。
+リモートのベースブランチを定期チェックし、リモートで変更が入った行があればエディタ上で黄色にハイライトします。
 
-- 行背景に黄色 + ガターに縦棒アイコン
-- 編集中バッファに追従（未保存の編集も正しい行に乗ります）
-- ホバーで比較対象のブランチ名
+<< 画像 >>
 
-### 強ハイライト：マージ時の衝突を予測
+デフォルトでは 5 分ごと、加えて VS Code がフォーカスを取得したタイミングで `git ls-remote` により更新チェックします。
+更新があれば、ベースブランチを更新するためのプロンプトを表示します（OK を押すとベースブランチのみ `git fetch`）。
 
-`git merge-file -p --diff3` で 3-way 試行マージを実行し、衝突する行を赤く表示します。PR を開いたりマージを試したりする前に衝突箇所が分かります。
+また、ハイライト行のホバーメニューから、リモートでの変更をチェックすることも可能です。
 
-- 行背景に赤 + ガターに三角アイコン
-- 弱ハイライトより優先（同じ行に両方かかる場合は赤のみ）
-- 編集中バッファを `ours` として扱うので、未保存の編集による衝突も検知
+<< 画像 >>
 
-### Explorer のファイル装飾
+### マージ時のコンフリクトを予測
 
-ファイルツリー上で衝突しそうなファイルが一目でわかります。
+編集を行うたび、ベースへのマージ時に実際にコンフリクトする行を赤くハイライトします。
+また該当ファイルにもバッジを表示します。
 
-- ファイル名の色付け（変更あり / 衝突予測の 2 色）
-- バッジ表示（`Δ` / `!`）
-- 親フォルダにも伝播
-
-### リモート更新の自動検知
-
-設定した間隔（デフォルト 5 分）でリモートを確認し、ベースブランチが進んでいたら通知または自動 fetch します。
+<< 画像 >>
 
 ## 要件
 
 | | |
 |---|---|
 | VS Code | 1.74 以上 |
-| Git | 2.30 以上 |
+| Git | 2.30 以上 (コンフリクト予測機能は 2.38 以上) |
 
 ## インストール
 
 ### Marketplace から
 
-将来公開予定です。
-
-### VSIX をビルドしてインストール
-
-```sh
-git clone <this-repo-url> conflict-lens
-cd conflict-lens
-npm install
-npm run build:prod
-npx @vscode/vsce package
-code --install-extension conflict-lens-*.vsix
-```
+<< 公開したら追記 >>
 
 ## 使い方
 
 1. git リポジトリを VS Code で開く
-2. ステータスバー右下に `Conflict Lens: <baseBranch>` が表示されることを確認する
-3. 必要であれば `Cmd+Shift+P → Conflict Lens: Select Base Branch` でベースブランチを切り替える
-4. ファイルを開くと弱・強ハイライトが自動で表示される
+2. ステータスバー右下の `Conflict Lens: <baseBranch>`を押下し、ベースブランチを選択する（すでに選択されている場合は不要）
 
-### ベースブランチの自動検出
+これで各種機能が有効化されます。
 
-`conflictLens.baseBranch` 設定が空の場合、次の順序で自動検出します。
+### ベースブランチの自動検出機能について
 
-1. `refs/remotes/origin/HEAD` のシンボリック参照
-2. `origin/main`
-3. `origin/master`
+拡張機能をインストール時、ベースブランチを次の順序で自動検出します。
 
-検出できなかった場合は `(no base)` 表示と通知が出ます。
+1. リモートのデフォルトブランチ（`refs/remotes/<remoteName>/HEAD` の参照先）
+2. `<remoteName>/main`
+3. `<remoteName>/master`
+
+検出できなかった場合は `(no base)` と表示され、各種機能が無効化されます。
+
+## その他の機能
 
 ### 変更されたファイル一覧を見る
 
-`Conflict Lens: Show Changed Files` でベースが変更したファイル一覧を QuickPick で表示できます。衝突予測のあるファイルは上位に並びます。
+`Conflict Lens: Show Changed Files` を実行すると、ベースブランチで変更されたファイルが画面上部に一覧表示され、選択するとそのファイルが開きます。
+
+<< 画像 >>
+
+衝突が予測されるファイルは上位に並びます。
 
 ### 差分エディタで詳細を見る
 
-`Conflict Lens: Open Diff` で、開いているファイルの `merge-base 時点 ↔ 現在のバッファ` 差分を VS Code の差分エディタで開きます。
+ハイライトが出ている場合、ベースブランチにおけるコードと、ローカルにおけるコードを左右に並べて比較することが可能です。
+
+<< 画像 >>
+
+起動方法は 2 通りです。
+
+- ハイライトされた行のホバー表示に出る「Open diff」リンクをクリックする
+- コマンドパレットから `Conflict Lens: Open Diff` を実行する
 
 ### 一時的に無効化
 
-`Conflict Lens: Toggle` で全装飾の on/off を切り替えられます。
+`Conflict Lens: Toggle` でハイライトの on/off を切り替えられます。
 
 ## 設定リファレンス
 
@@ -93,18 +111,21 @@ code --install-extension conflict-lens-*.vsix
 |---|---|---|---|
 | `conflictLens.enabled` | `true` | bool | 拡張全体の on/off |
 | `conflictLens.baseBranch` | `origin/main` | string | 比較対象。空で自動検出 |
-| `conflictLens.enableConflictPrediction` | `true` | bool | 強ハイライトの on/off |
-| `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーのマーカー |
-| `conflictLens.showGutterIcon` | `true` | bool | 行番号横のガターアイコン |
-| `conflictLens.showFileDecorationColors` | `true` | bool | Explorer のファイル名色付け |
-| `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer のバッジ表示 |
+| `conflictLens.remoteName` | `origin` | string | 自動検出で使うリモート名 |
+| `conflictLens.enableConflictPrediction` | `true` | bool | コンフリクト予測を有効にするか |
+| `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーにハイライト位置を表示するか |
+| `conflictLens.showGutterIcon` | `true` | bool | 行番号横にアイコンを表示するか |
+| `conflictLens.showFileDecorationColors` | `true` | bool | Explorer 上でファイル名を色付けするか |
+| `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | リモート更新検知の間隔（分）。`0` で無効 |
-| `conflictLens.autoFetchOnRemoteUpdate` | `false` | bool | リモートが進んだら自動 fetch |
-| `conflictLens.largeFileHunkThreshold` | `200` | 1-10000 | この hunk 数を超えると装飾しない |
+| `conflictLens.largeFileHunkThreshold` | `200` | 1-10000 | 変更箇所がこの数を超えるファイルは装飾しない |
 
-設定変更は即時反映されます（リロード不要）。
+ハイライトの色や、Explorer のファイル名色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
 
-色は `workbench.colorCustomizations` でカスタマイズできます（`conflictLens.changedLineBackground` など）。
+- `conflictLens.changedLineBackground` — ベースが変更した行の背景色（デフォルト黄色）
+- `conflictLens.conflictLineBackground` — コンフリクト予測行の背景色（デフォルト赤色）
+- `conflictLens.changedFileForeground` — ベースが変更したファイルのファイル名色
+- `conflictLens.potentialConflictFileForeground` — コンフリクト予測ファイルのファイル名色
 
 ## コマンドリファレンス
 
@@ -128,7 +149,7 @@ code --install-extension conflict-lens-*.vsix
 ステータスバーを確認してください。
 
 - `(no base)` → ベースブランチが未検出。`Select Base Branch` で指定
-- `(rebasing)` / `(merging)` → リポジトリが中断状態。完了させてください
+- `(rebasing)` / `(merging)` → rebase または merge の途中。完了または中止してください
 - `(unavailable)` → git が見つからない、または git リポジトリではない
 
 それ以外の場合は、ベースとの差分自体がない可能性があります。次のコマンドで確認できます。
@@ -137,19 +158,19 @@ code --install-extension conflict-lens-*.vsix
 git log --oneline HEAD...origin/main
 ```
 
-**強ハイライトだけ出ない**
+**コンフリクト予測だけ出ない**
 
-`conflictLens.enableConflictPrediction` が `true` になっているか確認してください。設定が有効でも、ベースブランチが触っていないファイルは強ハイライトの対象外です。
+`conflictLens.enableConflictPrediction` が `true` になっているか確認してください。設定が有効でも、ベースブランチが触っていないファイルはコンフリクト予測の対象外です。
 
 **設定を変えたが反映されない**
 
-設定変更は即時反映されますが、それでもおかしい場合は `Conflict Lens: Refresh` を試してください。
+設定変更は即時反映されるはずですが、それでもおかしい場合は `Conflict Lens: Refresh` を試してください。
 
 ## 既知の制限
 
 - マルチルートワークスペースでは最初のフォルダのみ監視
 - サブモジュール内のファイル、シンボリックリンクは対象外
-- ベースが 200 hunks を超える変更をしているファイルは装飾しません（閾値は変更可）
+- ベースが行った変更箇所が 200 を超えるファイルは装飾されません（閾値は変更可）
 
 ## 開発
 

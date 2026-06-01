@@ -67,6 +67,7 @@ const DECORATION_REFRESH_DEBOUNCE_MS = 50;
 const DOCUMENT_REFRESH_DEBOUNCE_MS = 200;
 const CONFIG_NAMESPACE = 'conflictLens';
 const BASE_BRANCH_SETTING = 'baseBranch';
+const REMOTE_NAME_SETTING = 'remoteName';
 const ENABLED_SETTING = 'enabled';
 const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
 const SHOW_GUTTER_ICON_SETTING = 'showGutterIcon';
@@ -74,7 +75,6 @@ const ENABLE_CONFLICT_PREDICTION_SETTING = 'enableConflictPrediction';
 const SHOW_FILE_DECORATION_COLORS_SETTING = 'showFileDecorationColors';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
-const AUTO_FETCH_SETTING = 'autoFetchOnRemoteUpdate';
 const LARGE_FILE_HUNK_THRESHOLD_SETTING = 'largeFileHunkThreshold';
 /**
  * Custom URI scheme used by the "Open Diff" command to feed the
@@ -128,7 +128,7 @@ export function activate(context: vscode.ExtensionContext): void {
     100,
   );
   statusBarItem.name = EXTENSION_NAME;
-  statusBarItem.command = 'conflictLens.showOutputChannel';
+  statusBarItem.command = 'conflictLens.selectBaseBranch';
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
@@ -284,9 +284,9 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (event) => {
-      const baseChanged = event.affectsConfiguration(
-        `${CONFIG_NAMESPACE}.${BASE_BRANCH_SETTING}`,
-      );
+      const baseChanged =
+        event.affectsConfiguration(`${CONFIG_NAMESPACE}.${BASE_BRANCH_SETTING}`) ||
+        event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_NAME_SETTING}`);
       const enabledChanged = event.affectsConfiguration(
         `${CONFIG_NAMESPACE}.${ENABLED_SETTING}`,
       );
@@ -346,6 +346,15 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
     vscode.workspace.onDidCloseTextDocument((doc) => {
       cancelDocumentRefresh(doc);
     }),
+    // Window-focus listener: when the user returns to VS Code we run a
+    // remote check too (subject to throttling). The interval timer
+    // alone leaves up to `remoteCheckIntervalMinutes` of staleness;
+    // focus-triggered checks close that gap for the realistic case of
+    // "I just got back from looking at GitHub, was something pushed?".
+    vscode.window.onDidChangeWindowState((state) => {
+      if (!state.focused) return;
+      maybePerformRemoteCheck();
+    }),
   );
 
   // Initial pass for any editors already open at activation.
@@ -357,6 +366,7 @@ async function refreshBaseBranch(): Promise<void> {
   const { environment, repository } = currentState.context;
   const log = runtime?.logChannel;
   const configured = readConfiguredBaseBranch(repository.handle.rootUri);
+  const remoteName = readConfiguredRemoteName(repository.handle.rootUri);
 
   let resolution: BaseBranchResolution;
   try {
@@ -364,6 +374,7 @@ async function refreshBaseBranch(): Promise<void> {
       runner: environment.runner,
       repoRootPath: repository.rootPath,
       configured,
+      remoteName,
     });
   } catch (err) {
     log?.warn(`resolveBaseBranch threw: ${stringifyError(err)}`);
@@ -451,6 +462,14 @@ function readConfiguredBaseBranch(scope: vscode.Uri | undefined): string | undef
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function readConfiguredRemoteName(scope: vscode.Uri | undefined): string {
+  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE, scope);
+  const value = cfg.get<string>(REMOTE_NAME_SETTING);
+  if (typeof value !== 'string') return 'origin';
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? 'origin' : trimmed;
 }
 
 function isEnabled(): boolean {
@@ -832,14 +851,43 @@ let inflightRemoteCheck: AbortController | undefined;
  */
 let lastNotifiedRemoteSha: string | undefined;
 
+/**
+ * Wall-clock timestamp of the most recently *initiated* remote check.
+ * Shared by both the interval timer and the window-focus listener so
+ * that whichever fires first counts; the other path back-offs until
+ * `REMOTE_CHECK_THROTTLE_MS` has elapsed. Set at initiation (not
+ * completion) so two near-simultaneous triggers cannot both start.
+ */
+let lastRemoteCheckAt = 0;
+
+/**
+ * Minimum gap between two remote checks regardless of which trigger
+ * caused them. Picked to absorb the window-focus event bursts that
+ * happen when the user rapidly alt-tabs between the editor and
+ * another app, without making the focus trigger so lazy that it
+ * defeats the purpose of running it at all. The interval timer is
+ * always at least 1 minute (the `remoteCheckIntervalMinutes` minimum
+ * non-zero value), so it is unaffected by this throttle in practice.
+ */
+const REMOTE_CHECK_THROTTLE_MS = 30_000;
+
 function readRemoteCheckIntervalMinutes(): number {
   const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return cfg.get<number>(REMOTE_CHECK_INTERVAL_SETTING, 5);
 }
 
-function isAutoFetchEnabled(): boolean {
-  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-  return cfg.get<boolean>(AUTO_FETCH_SETTING, false);
+/**
+ * Common entry point for both the interval timer and the
+ * window-focus listener. Bails out when remote checking is
+ * disabled (`remoteCheckIntervalMinutes <= 0`) or when the
+ * throttle is still active.
+ */
+function maybePerformRemoteCheck(): void {
+  if (readRemoteCheckIntervalMinutes() <= 0) return;
+  const now = Date.now();
+  if (now - lastRemoteCheckAt < REMOTE_CHECK_THROTTLE_MS) return;
+  lastRemoteCheckAt = now;
+  void performRemoteCheck();
 }
 
 /**
@@ -856,7 +904,7 @@ function startOrRestartRemoteCheckTimer(): void {
   if (!Number.isFinite(intervalMin) || intervalMin <= 0) return;
   const intervalMs = intervalMin * 60_000;
   remoteCheckTimer = setInterval(() => {
-    void performRemoteCheck();
+    maybePerformRemoteCheck();
   }, intervalMs);
   remoteCheckTimer.unref?.();
 }
@@ -870,6 +918,10 @@ function stopRemoteCheckTimer(): void {
     inflightRemoteCheck.abort();
     inflightRemoteCheck = undefined;
   }
+  // Clearing the throttle as well so that whatever trigger fires next
+  // (timer restart, focus event) is allowed to run immediately rather
+  // than waiting out the previous window.
+  lastRemoteCheckAt = 0;
 }
 
 async function performRemoteCheck(): Promise<void> {
@@ -916,29 +968,27 @@ async function handleRemoteBehind(
   const baseBranch = ctx.baseBranch;
   if (!baseBranch) return;
 
-  if (isAutoFetchEnabled()) {
-    runtime?.logChannel.info(
-      `Remote moved (${remoteSha.slice(0, 8)}); auto-fetching ${baseBranch}.`,
-    );
-    const ok = await tryFetch(ctx, baseBranch);
-    if (ok) {
-      lastNotifiedRemoteSha = undefined;
-      scheduleDecorationRefresh();
-    }
-    return;
-  }
-
-  // Manual mode: notify once per distinct remote SHA so the user is
-  // not nagged on every timer tick.
+  // Prompt at most once per distinct remote SHA so the user is not
+  // re-asked on every timer tick. The modal carries a single OK button
+  // (VS Code adds an implicit Cancel); accepting it fetches *only* the
+  // base branch (not the whole remote) and refreshes decorations.
   if (lastNotifiedRemoteSha === remoteSha) return;
   lastNotifiedRemoteSha = remoteSha;
-  const fetchLabel = t('Fetch now');
-  const choice = await vscode.window.showInformationMessage(
-    t('{0}: {1} has moved upstream.', EXTENSION_NAME, baseBranch),
-    fetchLabel,
+  runtime?.logChannel.info(
+    `Remote moved (${remoteSha.slice(0, 8)}); prompting for ${baseBranch}.`,
   );
-  if (choice !== fetchLabel) return;
-  const ok = await tryFetch(ctx, baseBranch);
+  const okLabel = t('OK');
+  const choice = await vscode.window.showInformationMessage(
+    t(
+      '{0}: {1} has moved upstream. Fetch the base branch now?',
+      EXTENSION_NAME,
+      baseBranch,
+    ),
+    { modal: true },
+    okLabel,
+  );
+  if (choice !== okLabel) return;
+  const ok = await tryFetchBaseOnly(ctx, baseBranch);
   if (ok) {
     lastNotifiedRemoteSha = undefined;
     scheduleDecorationRefresh();
@@ -946,17 +996,23 @@ async function handleRemoteBehind(
 }
 
 /**
- * Fetch the base branch's remote via vscode.git's `Repository.fetch`.
+ * Fetch *only* the base branch via vscode.git's `Repository.fetch`.
+ * Passing the ref name to `fetch` runs `git fetch <remote> <ref>`, which
+ * updates a single local tracking ref (`refs/remotes/<remote>/<ref>`)
+ * and leaves the rest of the remote's refs alone — important so the
+ * Fetch-now action does not surprise the user with side effects on
+ * other Source Control views.
  *
- * The runner-spawn fallback was removed because it could not actually
- * succeed for the cases where vscode.git's fetch would have failed:
- * SECURE_ARGS sets `core.sshCommand=` (blocks SSH transport) and
- * SECURE_ENV sets `GIT_ASKPASS=true` / `SSH_ASKPASS=true` (silently
- * fails credential prompts). Relaxing those for one command would
- * undermine the global hardening, so we surface a "run git fetch
- * manually" message instead when the built-in path is unavailable.
+ * When the running VS Code build does not expose a fetch method, fall
+ * back to asking the user to run `git fetch` themselves. We do not
+ * spawn git ourselves because SECURE_ARGS / SECURE_ENV intentionally
+ * disable the SSH transport and credential prompts that any real
+ * network fetch would need.
  */
-async function tryFetch(ctx: LiveContext, baseBranch: string): Promise<boolean> {
+async function tryFetchBaseOnly(
+  ctx: LiveContext,
+  baseBranch: string,
+): Promise<boolean> {
   const split = await splitRemoteBranch(
     ctx.environment.runner,
     ctx.repository.rootPath,
@@ -970,11 +1026,11 @@ async function tryFetch(ctx: LiveContext, baseBranch: string): Promise<boolean> 
   const handle = ctx.repository.handle;
   if (typeof handle.fetch !== 'function') {
     runtime?.logChannel.warn(
-      'vscode.git did not surface a fetch method; cannot auto-fetch.',
+      'vscode.git did not surface a fetch method; cannot fetch from this command.',
     );
     void vscode.window.showInformationMessage(
       t(
-        '{0}: cannot auto-fetch on this VSCode version. Please run "git fetch" manually.',
+        '{0}: cannot fetch on this VS Code version. Please run "git fetch" manually.',
         EXTENSION_NAME,
       ),
     );
@@ -1145,12 +1201,12 @@ function renderStatusBar(state: ExtensionState): void {
   switch (state.kind) {
     case 'initializing':
       statusBarItem.text = t('{0}: (initializing)', EXTENSION_NAME);
-      statusBarItem.tooltip = t('{0}: open output channel', EXTENSION_NAME);
+      statusBarItem.tooltip = t('{0}: click to select base branch', EXTENSION_NAME);
       return;
     case 'unavailable':
       statusBarItem.text = `${EXTENSION_NAME}: ${state.reason}`;
       statusBarItem.tooltip =
-        state.tooltip ?? t('{0}: open output channel', EXTENSION_NAME);
+        state.tooltip ?? t('{0}: click to select base branch', EXTENSION_NAME);
       return;
     case 'live': {
       const { context } = state;
@@ -1219,7 +1275,7 @@ function tooltipFor(context: LiveContext): string {
     case 'ready':
       if (context.baseBranch) {
         return t(
-          '{0}: comparing against {1}. Click to open the output channel.',
+          '{0}: comparing against {1}. Click to change the base branch.',
           EXTENSION_NAME,
           context.baseBranch,
         );
@@ -1394,28 +1450,16 @@ async function openDiffCommand(): Promise<void> {
   const normalized = relative.split(path.sep).join('/');
   if (normalized === '' || normalized.startsWith('..')) return;
 
-  // Anchor the diff at the merge-base so the LEFT side shows the file
-  // as it existed at the fork point, not at base-branch tip. This
-  // matches the weak highlight's reference frame (`git diff --merge-base
-  // HEAD <base>`) and lets the user see exactly how their work has
-  // diverged from where the two branches last agreed.
-  const mergeBaseSha = await resolveMergeBase(
-    ctx.environment.runner,
-    ctx.repository.rootPath,
-    baseBranch,
-  );
-  if (!mergeBaseSha) {
-    void vscode.window.showInformationMessage(
-      t('{0}: cannot determine merge-base with {1}.', EXTENSION_NAME, baseBranch),
-    );
-    return;
-  }
-
+  // LEFT side: the file as it currently exists on the base branch's tip.
+  // RIGHT side: the user's editable buffer. This shows "base side
+  // currently looks like this; my side currently looks like this",
+  // which is what users intuitively expect from a "diff against base"
+  // command.
   const baseUri = vscode.Uri.from({
     scheme: DIFF_PROVIDER_SCHEME,
-    authority: 'merge-base',
+    authority: 'base',
     path: `/${normalized}`,
-    query: mergeBaseSha,
+    query: baseBranch,
   });
 
   try {
@@ -1423,7 +1467,7 @@ async function openDiffCommand(): Promise<void> {
       'vscode.diff',
       baseUri,
       doc.uri,
-      `${baseBranch} merge-base ↔ ${normalized}`,
+      `${baseBranch} ↔ ${normalized}`,
       { preview: true },
     );
   } catch (err) {

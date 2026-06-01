@@ -228,7 +228,10 @@ export class StrongDecorationCoordinator implements vscode.Disposable {
     const md = new vscode.MarkdownString(
       t('Will conflict when merging {0}', baseEscaped),
     );
-    md.isTrusted = false;
+    md.appendMarkdown(
+      `\n\n[${t('Open diff')}](command:conflictLens.openDiff)`,
+    );
+    md.isTrusted = { enabledCommands: ['conflictLens.openDiff'] };
     return md;
   }
 }

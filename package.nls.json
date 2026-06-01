@@ -14,13 +14,13 @@
 
   "conflictLens.config.enabled.description": "Enable or disable Conflict Lens.",
   "conflictLens.config.baseBranch.description": "Remote-tracking branch to compare against (e.g. origin/main). If unset, Conflict Lens tries to detect a default.",
+  "conflictLens.config.remoteName.description": "Remote name used as the prefix for auto-detection candidates (<remoteName>/HEAD, <remoteName>/main, <remoteName>/master). Defaults to 'origin'.",
   "conflictLens.config.showOverviewRuler.description": "Show markers in the editor overview ruler.",
   "conflictLens.config.showGutterIcon.description": "Show gutter icons for changed and conflicting lines.",
   "conflictLens.config.showFileDecorationColors.description": "Tint file names in Explorer / Open Editors for changed files.",
   "conflictLens.config.showFileDecorationBadges.description": "Show warning badges on file names that may conflict.",
   "conflictLens.config.enableConflictPrediction.description": "Enable strong highlight using git merge-tree (requires Git 2.38+). Disable for very large repositories.",
   "conflictLens.config.remoteCheckIntervalMinutes.description": "Interval in minutes for polling remote updates with git ls-remote. Set to 0 to disable.",
-  "conflictLens.config.autoFetchOnRemoteUpdate.description": "Automatically run git fetch and recompute when remote updates are detected.",
   "conflictLens.config.largeFileHunkThreshold.description": "Suppress line highlights when a file has more diff hunks than this threshold.",
 
   "conflictLens.color.changedLineBackground.description": "Background color for lines changed on the base branch (weak highlight).",

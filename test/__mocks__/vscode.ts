@@ -43,7 +43,7 @@ export class ThemeColor {
 }
 
 export class MarkdownString {
-  isTrusted = false;
+  isTrusted: boolean | { readonly enabledCommands: readonly string[] } = false;
   supportThemeIcons = false;
   supportHtml = false;
   constructor(public value: string = '') {}
@@ -270,6 +270,7 @@ export const window = {
   visibleTextEditors: [] as readonly unknown[],
   onDidChangeActiveTextEditor: new EventEmitter<unknown>().event,
   onDidChangeVisibleTextEditors: new EventEmitter<unknown>().event,
+  onDidChangeWindowState: new EventEmitter<unknown>().event,
   showInformationMessage: async (..._args: unknown[]): Promise<unknown> => undefined,
   showWarningMessage: async (..._args: unknown[]): Promise<unknown> => undefined,
   showQuickPick: async (..._args: unknown[]): Promise<unknown> => undefined,

@@ -96,6 +96,12 @@
           "scope": "resource",
           "description": "%conflictLens.config.baseBranch.description%"
         },
+        "conflictLens.remoteName": {
+          "type": "string",
+          "default": "origin",
+          "scope": "resource",
+          "description": "%conflictLens.config.remoteName.description%"
+        },
         "conflictLens.showOverviewRuler": {
           "type": "boolean",
           "default": true,
@@ -133,12 +139,6 @@
           "maximum": 1440,
           "scope": "window",
           "description": "%conflictLens.config.remoteCheckIntervalMinutes.description%"
-        },
-        "conflictLens.autoFetchOnRemoteUpdate": {
-          "type": "boolean",
-          "default": false,
-          "scope": "window",
-          "description": "%conflictLens.config.autoFetchOnRemoteUpdate.description%"
         },
         "conflictLens.largeFileHunkThreshold": {
           "type": "integer",

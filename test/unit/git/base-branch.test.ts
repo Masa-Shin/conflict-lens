@@ -90,6 +90,7 @@ describe('resolveBaseBranch', () => {
       runner,
       repoRootPath: ws.repo,
       configured: 'origin/main',
+      remoteName: 'origin',
     });
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
@@ -105,6 +106,7 @@ describe('resolveBaseBranch', () => {
       runner,
       repoRootPath: ws.repo,
       configured: 'origin/never-existed',
+      remoteName: 'origin',
     });
     expect(result.kind).toBe('configured-invalid');
   });
@@ -116,6 +118,7 @@ describe('resolveBaseBranch', () => {
       runner,
       repoRootPath: ws.repo,
       configured: undefined,
+      remoteName: 'origin',
     });
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
@@ -133,11 +136,12 @@ describe('resolveBaseBranch', () => {
       runner,
       repoRootPath: ws.repo,
       configured: undefined,
+      remoteName: 'origin',
     });
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.baseBranch).toBe('origin/main');
-      expect(result.source).toBe('origin-main');
+      expect(result.source).toBe('default-main');
     }
   });
 
@@ -149,11 +153,12 @@ describe('resolveBaseBranch', () => {
       runner,
       repoRootPath: ws.repo,
       configured: undefined,
+      remoteName: 'origin',
     });
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.baseBranch).toBe('origin/master');
-      expect(result.source).toBe('origin-master');
+      expect(result.source).toBe('default-master');
     }
   });
 
@@ -165,6 +170,7 @@ describe('resolveBaseBranch', () => {
       runner,
       repoRootPath: ws.repo,
       configured: undefined,
+      remoteName: 'origin',
     });
     expect(result.kind).toBe('none-found');
   });

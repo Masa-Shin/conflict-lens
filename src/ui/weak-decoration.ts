@@ -293,9 +293,12 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     const md = new vscode.MarkdownString(
       t('Changed relative to {0}', baseEscaped),
     );
-    // Hover text must never be a trusted MarkdownString: command:?
-    // links inside one would otherwise execute when the user hovers.
-    md.isTrusted = false;
+    md.appendMarkdown(
+      `\n\n[${t('Open diff')}](command:conflictLens.openDiff)`,
+    );
+    // Whitelist only our diff command so generic `command:?` URIs cannot
+    // execute when the user hovers a decoration in a hostile workspace.
+    md.isTrusted = { enabledCommands: ['conflictLens.openDiff'] };
     return md;
   }
 }

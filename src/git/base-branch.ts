@@ -9,8 +9,8 @@ import type { GitRunner } from './runner';
 export type BaseBranchSource =
   | 'configured'
   | 'symbolic-ref'
-  | 'origin-main'
-  | 'origin-master';
+  | 'default-main'
+  | 'default-master';
 
 export type BaseBranchResolution =
   | {
@@ -35,17 +35,28 @@ export interface ResolveBaseBranchParams {
   readonly repoRootPath: string;
   /** Current value from `conflictLens.baseBranch`. `undefined` means unset. */
   readonly configured: string | undefined;
+  /**
+   * Remote name used as the prefix for auto-detection candidates
+   * (`<remoteName>/HEAD` symbolic-ref, `<remoteName>/main`,
+   * `<remoteName>/master`). Read from `conflictLens.remoteName`; the
+   * caller is expected to fall back to `'origin'` when the setting is
+   * empty.
+   */
+  readonly remoteName: string;
 }
 
 /**
- * Decide the effective base branch for a repository, following the priority
- * order in spec §3.1.2:
+ * Decide the effective base branch for a repository:
  *
- *   1. The user-configured value, if it validates strictly.
- *   2. `git symbolic-ref refs/remotes/origin/HEAD` if it points to a
+ *   1. The user-configured `conflictLens.baseBranch` value, if it validates strictly.
+ *   2. `git symbolic-ref refs/remotes/<remoteName>/HEAD` if it points to a
  *      remote-tracking ref we have locally.
- *   3. `origin/main` if present in the local listing.
- *   4. `origin/master` if present in the local listing.
+ *   3. `<remoteName>/main` if present in the local listing.
+ *   4. `<remoteName>/master` if present in the local listing.
+ *
+ * `<remoteName>` defaults to `origin` but can be overridden through
+ * `conflictLens.remoteName` so that users whose clone was made with
+ * `--origin upstream` (or who renamed origin) still get detection.
  *
  * If the configured value is set but fails validation, we surface
  * `configured-invalid` so the caller can choose between a warning + Select
@@ -56,7 +67,7 @@ export interface ResolveBaseBranchParams {
 export async function resolveBaseBranch(
   params: ResolveBaseBranchParams,
 ): Promise<BaseBranchResolution> {
-  const { runner, repoRootPath, configured } = params;
+  const { runner, repoRootPath, configured, remoteName } = params;
   const listing = await listRemoteBranches(runner, repoRootPath);
 
   if (configured !== undefined && configured.length > 0) {
@@ -71,9 +82,9 @@ export async function resolveBaseBranch(
     return { kind: 'configured-invalid', configured, validation, listing };
   }
 
-  // Priority 2: symbolic-ref refs/remotes/origin/HEAD
+  // Priority 2: symbolic-ref refs/remotes/<remoteName>/HEAD
   const symRef = await runner.run(
-    ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'],
+    ['symbolic-ref', '--quiet', '--short', `refs/remotes/${remoteName}/HEAD`],
     { cwd: repoRootPath },
   );
   if (symRef.exitCode === 0) {
@@ -84,11 +95,13 @@ export async function resolveBaseBranch(
   }
 
   // Priority 3 / 4
-  if (listing.branches.includes('origin/main')) {
-    return { kind: 'ok', baseBranch: 'origin/main', source: 'origin-main', listing };
+  const mainCandidate = `${remoteName}/main`;
+  if (listing.branches.includes(mainCandidate)) {
+    return { kind: 'ok', baseBranch: mainCandidate, source: 'default-main', listing };
   }
-  if (listing.branches.includes('origin/master')) {
-    return { kind: 'ok', baseBranch: 'origin/master', source: 'origin-master', listing };
+  const masterCandidate = `${remoteName}/master`;
+  if (listing.branches.includes(masterCandidate)) {
+    return { kind: 'ok', baseBranch: masterCandidate, source: 'default-master', listing };
   }
 
   return { kind: 'none-found', listing };

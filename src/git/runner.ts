@@ -76,16 +76,12 @@ const NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null';
  * arbitrary code execution. See spec §4.1 共通プレフィクス and §5.5.
  *
  * NOTE: `credential.helper=` is intentionally *not* included here. Suppressing
- * the helper for every command would break OS-keychain based authentication
- * for HTTPS remotes (PAT-protected GitHub, etc.) and make `git fetch` /
- * `git ls-remote` fail silently. Local-only commands used by this extension
+ * the helper would make `git ls-remote` — the only network-bound command
+ * this extension issues directly — fail silently against PAT-protected
+ * HTTPS remotes. Local-only commands used by this extension
  * (diff / show / merge-tree / merge-file / rev-parse / cat-file /
  * for-each-ref / merge-base / check-attr) do not invoke the credential
- * helper, so omitting the override is safe. Network-bound commands
- * (`fetch` / `ls-remote`) will be handled in Phase 11 by delegating to
- * `vscode.git`'s `Repository.fetch()` whenever possible, and falling back
- * to an allow-list of well-known helpers (osxkeychain / manager / wincred /
- * cache / store) for the cases that must be spawned directly.
+ * helper, so leaving it untouched is safe for those too.
  */
 export const SECURE_ARGS: readonly string[] = Object.freeze([
   '--no-pager',
