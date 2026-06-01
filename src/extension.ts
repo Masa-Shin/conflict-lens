@@ -1,11 +1,17 @@
 import * as vscode from 'vscode';
 
 import {
+  resolveBaseBranch,
+  type BaseBranchResolution,
+  type BaseBranchSource,
+} from './git/base-branch';
+import {
   resolveGitEnvironment,
   type GitEnvironment,
   type GitEnvironmentResult,
   type ParsedGitVersion,
 } from './git/binary';
+import { listRemoteBranches } from './git/branches';
 import {
   detectTargetRepository,
   type TargetRepository,
@@ -20,23 +26,30 @@ import { t } from './l10n';
 
 const EXTENSION_NAME = 'Conflict Lens';
 const STATE_EVALUATION_DEBOUNCE_MS = 100;
+const CONFIG_NAMESPACE = 'conflictLens';
+const BASE_BRANCH_SETTING = 'baseBranch';
 
 interface RuntimeState {
   logChannel: vscode.LogOutputChannel;
   statusBarItem: vscode.StatusBarItem;
 }
 
+interface LiveContext {
+  environment: GitEnvironment;
+  repository: TargetRepository;
+  gitState: GitState;
+  baseBranch: string | undefined;
+  baseBranchSource: BaseBranchSource | undefined;
+}
+
 type ExtensionState =
   | { kind: 'initializing' }
   | { kind: 'unavailable'; reason: string; tooltip?: string }
-  | {
-      kind: 'live';
-      environment: GitEnvironment;
-      repository: TargetRepository;
-      gitState: GitState;
-    };
+  | { kind: 'live'; context: LiveContext };
 
 let runtime: RuntimeState | undefined;
+let currentState: ExtensionState = { kind: 'initializing' };
+let oneShotNotificationsShown: Set<string> = new Set();
 
 export function activate(context: vscode.ExtensionContext): void {
   const logChannel = vscode.window.createOutputChannel(EXTENSION_NAME, { log: true });
@@ -53,6 +66,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(statusBarItem);
 
   runtime = { logChannel, statusBarItem };
+  oneShotNotificationsShown = new Set();
   setState({ kind: 'initializing' });
 
   registerCommands(context);
@@ -98,37 +112,150 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
   }
   log?.info(`Target repository: ${repoResult.repository.rootPath}.`);
 
-  // Initial state probe.
-  const initialState = await safeDetectGitState(environment, repoResult.repository);
-  setState({
-    kind: 'live',
+  const initialGitState = await safeDetectGitState(environment, repoResult.repository);
+  log?.info(`Initial git state: ${initialGitState.kind}.`);
+
+  const liveContext: LiveContext = {
     environment,
     repository: repoResult.repository,
-    gitState: initialState,
-  });
-  log?.info(`Initial git state: ${initialState.kind}.`);
+    gitState: initialGitState,
+    baseBranch: undefined,
+    baseBranchSource: undefined,
+  };
+  setState({ kind: 'live', context: liveContext });
 
-  // Subscribe to repository state changes (HEAD commits, branch switches,
-  // index churn, rebase/merge marker churn, etc.). The vscode.git event
-  // fires often (on `git add` as well), so we debounce.
-  const reevaluate = debounce(async () => {
+  await refreshBaseBranch();
+
+  const reevaluateState = debounce(async () => {
     try {
       const next = await safeDetectGitState(environment, repoResult.repository);
       setState((prev) => {
         if (prev.kind !== 'live') return prev;
-        if (gitStatesEqual(prev.gitState, next)) return prev;
-        log?.info(`Git state changed: ${prev.gitState.kind} → ${next.kind}.`);
-        return { ...prev, gitState: next };
+        if (gitStatesEqual(prev.context.gitState, next)) return prev;
+        runtime?.logChannel.info(
+          `Git state changed: ${prev.context.gitState.kind} → ${next.kind}.`,
+        );
+        return { kind: 'live', context: { ...prev.context, gitState: next } };
       });
     } catch (err) {
-      log?.warn(`State re-evaluation failed: ${stringifyError(err)}`);
+      runtime?.logChannel.warn(`State re-evaluation failed: ${stringifyError(err)}`);
     }
   }, STATE_EVALUATION_DEBOUNCE_MS);
 
-  const subscription = repoResult.repository.handle.state.onDidChange(() => {
-    reevaluate();
+  context.subscriptions.push(
+    repoResult.repository.handle.state.onDidChange(() => {
+      reevaluateState();
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (!event.affectsConfiguration(`${CONFIG_NAMESPACE}.${BASE_BRANCH_SETTING}`)) return;
+      await refreshBaseBranch();
+    }),
+  );
+}
+
+async function refreshBaseBranch(): Promise<void> {
+  if (currentState.kind !== 'live') return;
+  const { environment, repository } = currentState.context;
+  const log = runtime?.logChannel;
+  const configured = readConfiguredBaseBranch(repository.handle.rootUri);
+
+  let resolution: BaseBranchResolution;
+  try {
+    resolution = await resolveBaseBranch({
+      runner: environment.runner,
+      repoRootPath: repository.rootPath,
+      configured,
+    });
+  } catch (err) {
+    log?.warn(`resolveBaseBranch threw: ${stringifyError(err)}`);
+    return;
+  }
+
+  if (resolution.kind === 'ok') {
+    log?.info(
+      `Base branch resolved: ${resolution.baseBranch} (${resolution.source}).`,
+    );
+    setState((prev) => {
+      if (prev.kind !== 'live') return prev;
+      return {
+        kind: 'live',
+        context: {
+          ...prev.context,
+          baseBranch: resolution.baseBranch,
+          baseBranchSource: resolution.source,
+        },
+      };
+    });
+    return;
+  }
+
+  if (resolution.kind === 'configured-invalid') {
+    log?.warn(
+      `Configured baseBranch "${resolution.configured}" is invalid: ` +
+        `${resolution.validation.kind}.`,
+    );
+    setState((prev) => {
+      if (prev.kind !== 'live') return prev;
+      return {
+        kind: 'live',
+        context: { ...prev.context, baseBranch: undefined, baseBranchSource: undefined },
+      };
+    });
+    notifyOnce(
+      'configured-invalid',
+      t(
+        "{0}: configured base branch '{1}' is invalid or not fetched.",
+        EXTENSION_NAME,
+        resolution.configured,
+      ),
+      { action: 'Select' },
+    );
+    return;
+  }
+
+  // none-found
+  log?.info('No base branch could be detected.');
+  setState((prev) => {
+    if (prev.kind !== 'live') return prev;
+    return {
+      kind: 'live',
+      context: { ...prev.context, baseBranch: undefined, baseBranchSource: undefined },
+    };
   });
-  context.subscriptions.push(subscription);
+  notifyOnce(
+    'none-found',
+    t(
+      '{0}: could not detect a base branch. Run Select Base Branch to set one.',
+      EXTENSION_NAME,
+    ),
+    { action: 'Select' },
+  );
+}
+
+function readConfiguredBaseBranch(scope: vscode.Uri | undefined): string | undefined {
+  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE, scope);
+  const value = cfg.get<string>(BASE_BRANCH_SETTING);
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function notifyOnce(
+  key: string,
+  message: string,
+  options: { action?: string } = {},
+): void {
+  if (oneShotNotificationsShown.has(key)) return;
+  oneShotNotificationsShown.add(key);
+  const actions = options.action ? [options.action] : [];
+  void vscode.window.showInformationMessage(message, ...actions).then((choice) => {
+    if (choice === 'Select') {
+      void vscode.commands.executeCommand('conflictLens.selectBaseBranch');
+    }
+  });
 }
 
 async function safeDetectGitState(
@@ -139,7 +266,6 @@ async function safeDetectGitState(
     return await detectGitState(environment.runner, repository.rootPath);
   } catch (err) {
     runtime?.logChannel.warn(`detectGitState threw: ${stringifyError(err)}`);
-    // Treat detection failures as ready/clean so the extension still functions.
     return { kind: 'ready', detached: false, bisecting: false };
   }
 }
@@ -194,7 +320,6 @@ function handleGitEnvironmentFailure(result: GitEnvironmentResult): void {
       return;
     }
     case 'ok':
-      // Handled by caller.
       return;
   }
 }
@@ -215,10 +340,7 @@ function handleRepositoryFailure(result: TargetRepositoryResult): void {
       setState({
         kind: 'unavailable',
         reason: '(unavailable)',
-        tooltip: t(
-          '{0}: workspace is not a git repository.',
-          EXTENSION_NAME,
-        ),
+        tooltip: t('{0}: workspace is not a git repository.', EXTENSION_NAME),
       });
       return;
     case 'submodule':
@@ -244,17 +366,18 @@ function handleRepositoryFailure(result: TargetRepositoryResult): void {
       });
       return;
     case 'ok':
-      // Handled by caller.
       return;
   }
 }
 
-let currentState: ExtensionState = { kind: 'initializing' };
-
-function setState(next: ExtensionState | ((prev: ExtensionState) => ExtensionState)): void {
+function setState(
+  next: ExtensionState | ((prev: ExtensionState) => ExtensionState),
+): void {
   if (!runtime) return;
   const resolved =
-    typeof next === 'function' ? (next as (p: ExtensionState) => ExtensionState)(currentState) : next;
+    typeof next === 'function'
+      ? (next as (p: ExtensionState) => ExtensionState)(currentState)
+      : next;
   currentState = resolved;
   renderStatusBar(resolved);
 }
@@ -273,25 +396,24 @@ function renderStatusBar(state: ExtensionState): void {
         state.tooltip ?? t('{0}: open output channel', EXTENSION_NAME);
       return;
     case 'live': {
-      const baseSuffix = '(no base)'; // base branch wiring lands in Phase 4
-      const stateLabel = statusLabelFor(state.gitState);
-      if (state.gitState.kind === 'ready') {
-        // ready: show base suffix and optional modifier label
+      const { context } = state;
+      const baseLabel = context.baseBranch ?? '(no base)';
+      const stateLabel = statusLabelFor(context.gitState);
+      if (context.gitState.kind === 'ready') {
         statusBarItem.text = stateLabel
-          ? `${EXTENSION_NAME}: ${baseSuffix} ${stateLabel}`
-          : `${EXTENSION_NAME}: ${baseSuffix}`;
+          ? `${EXTENSION_NAME}: ${baseLabel} ${stateLabel}`
+          : `${EXTENSION_NAME}: ${baseLabel}`;
       } else {
-        // disabled-by-state: show only the state label
         statusBarItem.text = `${EXTENSION_NAME}: ${stateLabel}`;
       }
-      statusBarItem.tooltip = tooltipFor(state);
+      statusBarItem.tooltip = tooltipFor(context);
       return;
     }
   }
 }
 
-function tooltipFor(state: Extract<ExtensionState, { kind: 'live' }>): string {
-  switch (state.gitState.kind) {
+function tooltipFor(context: LiveContext): string {
+  switch (context.gitState.kind) {
     case 'no-commits':
       return t('{0}: repository has no commits yet.', EXTENSION_NAME);
     case 'rebasing':
@@ -306,7 +428,14 @@ function tooltipFor(state: Extract<ExtensionState, { kind: 'live' }>): string {
     case 'reverting':
       return t('{0}: highlighting paused while revert is in progress.', EXTENSION_NAME);
     case 'ready':
-      return t('{0}: open output channel', EXTENSION_NAME);
+      if (context.baseBranch) {
+        return t(
+          '{0}: comparing against {1}. Click to open the output channel.',
+          EXTENSION_NAME,
+          context.baseBranch,
+        );
+      }
+      return t('{0}: no base branch selected.', EXTENSION_NAME);
   }
 }
 
@@ -315,18 +444,20 @@ function registerCommands(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('conflictLens.showOutputChannel', () => {
       runtime?.logChannel.show();
     }),
+    vscode.commands.registerCommand(
+      'conflictLens.selectBaseBranch',
+      selectBaseBranchCommand,
+    ),
   );
 
   const stubs: ReadonlyArray<[command: string, label: string]> = [
     ['conflictLens.enable', 'Enable'],
     ['conflictLens.disable', 'Disable'],
     ['conflictLens.toggle', 'Toggle'],
-    ['conflictLens.selectBaseBranch', 'Select Base Branch'],
     ['conflictLens.refresh', 'Refresh'],
     ['conflictLens.showChangedFiles', 'Show Changed Files'],
     ['conflictLens.openDiff', 'Open Diff'],
   ];
-
   for (const [command, label] of stubs) {
     context.subscriptions.push(
       vscode.commands.registerCommand(command, () => {
@@ -338,7 +469,64 @@ function registerCommands(context: vscode.ExtensionContext): void {
   }
 }
 
-function debounce<T extends (...args: never[]) => void>(fn: T, delayMs: number): (...args: Parameters<T>) => void {
+async function selectBaseBranchCommand(): Promise<void> {
+  if (currentState.kind !== 'live') {
+    void vscode.window.showInformationMessage(
+      t('{0}: not ready yet. Open a git repository first.', EXTENSION_NAME),
+    );
+    return;
+  }
+  const { environment, repository } = currentState.context;
+  let listing;
+  try {
+    listing = await listRemoteBranches(environment.runner, repository.rootPath);
+  } catch (err) {
+    runtime?.logChannel.warn(`listRemoteBranches threw: ${stringifyError(err)}`);
+    void vscode.window.showWarningMessage(
+      t('{0}: failed to enumerate remote branches.', EXTENSION_NAME),
+    );
+    return;
+  }
+  if (listing.branches.length === 0) {
+    void vscode.window.showWarningMessage(
+      t(
+        '{0}: no remote-tracking branches found. Run git fetch first.',
+        EXTENSION_NAME,
+      ),
+    );
+    return;
+  }
+
+  const currentBase = currentState.context.baseBranch;
+  const items = listing.branches.map((branch) => ({
+    label: branch,
+    description: branch === currentBase ? '(current)' : undefined,
+  }));
+  const picked = await vscode.window.showQuickPick(items, {
+    title: `${EXTENSION_NAME}: Select Base Branch`,
+    placeHolder: t('Choose a remote-tracking branch to compare against', EXTENSION_NAME),
+    matchOnDescription: true,
+  });
+  if (!picked) return;
+
+  try {
+    await vscode.workspace
+      .getConfiguration(CONFIG_NAMESPACE, repository.handle.rootUri)
+      .update(BASE_BRANCH_SETTING, picked.label, vscode.ConfigurationTarget.Workspace);
+  } catch (err) {
+    runtime?.logChannel.warn(`Saving baseBranch failed: ${stringifyError(err)}`);
+    void vscode.window.showWarningMessage(
+      t('{0}: failed to save selection.', EXTENSION_NAME),
+    );
+    return;
+  }
+  // Re-evaluation is triggered by onDidChangeConfiguration.
+}
+
+function debounce<T extends (...args: never[]) => void>(
+  fn: T,
+  delayMs: number,
+): (...args: Parameters<T>) => void {
   let handle: NodeJS.Timeout | undefined;
   return (...args: Parameters<T>) => {
     if (handle) clearTimeout(handle);
@@ -361,4 +549,5 @@ function stringifyError(err: unknown): string {
 export function deactivate(): void {
   runtime = undefined;
   currentState = { kind: 'initializing' };
+  oneShotNotificationsShown = new Set();
 }
