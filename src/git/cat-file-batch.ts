@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 
+import type { BlobReader } from './blob';
 import { SECURE_ARGS, SECURE_ENV } from './runner';
 
 export interface GitCatFileBatchOptions {
@@ -240,6 +241,25 @@ export class GitCatFileBatch {
     this.buffer = Buffer.alloc(0);
     this.state = { kind: 'header' };
   }
+}
+
+/**
+ * Adapt a `GitCatFileBatch` to the `BlobReader` interface used by the
+ * weak-highlight compute pipeline. The per-request `signal` is currently
+ * ignored: the batch protocol does not surface per-request cancellation,
+ * and reads complete fast enough that this has not been a practical
+ * problem. If it becomes one, add a queue-removal path on the batch.
+ */
+export function createBlobReaderFromBatch(batch: GitCatFileBatch): BlobReader {
+  return async (ref, relativeFilePath, _options) => {
+    const spec = `${ref}:${relativeFilePath}`;
+    const result = await batch.read(spec);
+    if (result.kind === 'ok') return result.content.toString('utf8');
+    if (result.kind === 'missing') {
+      throw new Error(`git cat-file --batch: ${spec} not found`);
+    }
+    throw new Error(`git cat-file --batch: ${spec} is ambiguous`);
+  };
 }
 
 type HeaderParseResult =

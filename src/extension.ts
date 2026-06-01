@@ -13,7 +13,12 @@ import {
   type GitEnvironmentResult,
 } from './git/binary';
 import { listRemoteBranches } from './git/branches';
+import {
+  createBlobReaderFromBatch,
+  GitCatFileBatch,
+} from './git/cat-file-batch';
 import { resolveMergeBase } from './git/diff';
+import type { BlobReader } from './git/blob';
 import {
   detectTargetRepository,
   isFileWithinRepository,
@@ -63,6 +68,13 @@ interface LiveContext {
   gitState: GitState;
   baseBranch: string | undefined;
   baseBranchSource: BaseBranchSource | undefined;
+  /**
+   * Long-lived `git cat-file --batch` for blob reads. Created once per
+   * activation on the resolved git binary and disposed via the extension
+   * context. Wrapped in `readBlob` and reused for every refresh.
+   */
+  catFileBatch: GitCatFileBatch;
+  readBlob: BlobReader;
 }
 
 type ExtensionState =
@@ -148,12 +160,21 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
   const initialGitState = await safeDetectGitState(environment, repoResult.repository);
   log?.info(`Initial git state: ${initialGitState.kind}.`);
 
+  const catFileBatch = new GitCatFileBatch({
+    gitPath: environment.runner.gitPath,
+    cwd: repoResult.repository.rootPath,
+  });
+  context.subscriptions.push({ dispose: () => catFileBatch.dispose() });
+  const readBlob = createBlobReaderFromBatch(catFileBatch);
+
   const liveContext: LiveContext = {
     environment,
     repository: repoResult.repository,
     gitState: initialGitState,
     baseBranch: undefined,
     baseBranchSource: undefined,
+    catFileBatch,
+    readBlob,
   };
   setState({ kind: 'live', context: liveContext });
 
@@ -417,6 +438,7 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
     repoRootPath: ctx.repository.rootPath,
     baseBranch: ctx.baseBranch,
     mergeBaseSha,
+    readBlob: ctx.readBlob,
   };
 
   const coordinator = runtime.weakDecorations;
@@ -453,6 +475,7 @@ async function refreshDecorationsNow(): Promise<void> {
     repoRootPath: ctx.repository.rootPath,
     baseBranch: ctx.baseBranch,
     mergeBaseSha,
+    readBlob: ctx.readBlob,
   };
 
   // We fire updates in parallel; the coordinator's per-key in-flight map

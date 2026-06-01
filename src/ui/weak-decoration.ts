@@ -5,6 +5,7 @@ import {
   computeWeakHighlights,
   type WeakHighlightRange,
 } from '../diff/weak-highlight';
+import type { BlobReader } from '../git/blob';
 import type { GitRunner } from '../git/runner';
 import { t } from '../l10n';
 import {
@@ -29,6 +30,7 @@ export interface WeakHighlightInputs {
   readonly repoRootPath: string;
   readonly baseBranch: string;
   readonly mergeBaseSha: string;
+  readonly readBlob: BlobReader;
 }
 
 /** Toggleable visuals. Background color / hover always render. */
@@ -144,6 +146,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       mergeBaseSha: inputs.mergeBaseSha,
       relativeFilePath,
       rightContent: document.getText(),
+      readBlob: inputs.readBlob,
       signal: controller.signal,
     });
     const entry: InflightEntry = { controller, promise };

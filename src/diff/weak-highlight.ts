@@ -1,4 +1,4 @@
-import { showBlob } from '../git/blob';
+import type { BlobReader } from '../git/blob';
 import { runBaseDiff, type DiffHunk } from '../git/diff';
 import type { GitRunner } from '../git/runner';
 import { buildLineMapping } from './mapping';
@@ -32,6 +32,13 @@ export interface ComputeWeakHighlightsParams {
    * caller can read the disk bytes; both routes use this same path.
    */
   readonly rightContent: string;
+  /**
+   * Function to read the merge-base blob. Production should pass a
+   * batch-backed reader (`createBlobReaderFromBatch`) so the read does
+   * not pay a per-call git spawn; tests typically pass the runner-backed
+   * `createBlobReaderFromRunner` for isolation.
+   */
+  readonly readBlob: BlobReader;
   readonly signal?: AbortSignal;
 }
 
@@ -59,19 +66,14 @@ export async function computeWeakHighlights(
     mergeBaseSha,
     relativeFilePath,
     rightContent,
+    readBlob,
     signal,
   } = params;
 
   const hunks = await runBaseDiff(runner, repoRootPath, baseBranch, relativeFilePath, { signal });
   if (hunks.length === 0) return [];
 
-  const leftContent = await showBlob(
-    runner,
-    repoRootPath,
-    mergeBaseSha,
-    relativeFilePath,
-    { signal },
-  );
+  const leftContent = await readBlob(mergeBaseSha, relativeFilePath, { signal });
   const mapping = buildLineMapping(leftContent, rightContent);
 
   const ranges: WeakHighlightRange[] = [];

@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { mapHunkToRight, computeWeakHighlights } from '../../../src/diff/weak-highlight';
+import { createBlobReaderFromRunner } from '../../../src/git/blob';
 import { createGitRunner } from '../../../src/git/runner';
 
 const runner = createGitRunner('git');
@@ -156,6 +157,7 @@ describe('computeWeakHighlights (integration)', () => {
       mergeBaseSha: fx.mergeBaseSha,
       relativeFilePath: 'file.txt',
       rightContent,
+      readBlob: createBlobReaderFromRunner(runner, fx.repo),
     });
     // Base changed merge-base line 3; feature prepended 1 line, so it
     // lands on right-side line 4.
@@ -175,6 +177,7 @@ describe('computeWeakHighlights (integration)', () => {
       mergeBaseSha: fx.mergeBaseSha,
       relativeFilePath: 'file.txt',
       rightContent,
+      readBlob: createBlobReaderFromRunner(runner, fx.repo),
     });
     // Two leading lines shift merge-base line 3 to right-side line 5.
     expect(ranges).toEqual([{ startLine: 5, endLine: 5, insertion: false }]);
@@ -195,6 +198,7 @@ describe('computeWeakHighlights (integration)', () => {
       mergeBaseSha: fx.mergeBaseSha,
       relativeFilePath: 'file.txt',
       rightContent,
+      readBlob: createBlobReaderFromRunner(runner, fx.repo),
     });
     expect(ranges).toEqual([]);
   });
