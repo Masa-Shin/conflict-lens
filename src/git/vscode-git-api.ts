@@ -19,9 +19,23 @@ export interface VscodeGitApi {
   readonly onDidCloseRepository: Event<VscodeGitRepository>;
 }
 
+export interface VscodeGitFetchOptions {
+  readonly remote?: string;
+  readonly ref?: string;
+  readonly depth?: number;
+  readonly prune?: boolean;
+}
+
 export interface VscodeGitRepository {
   readonly rootUri: Uri;
   readonly state: VscodeGitRepositoryState;
+  /**
+   * Modern vscode.git surfaces a single `fetch(options)` overload.
+   * Declared optional so we can detect at runtime whether the running
+   * VSCode version supports it; the auto-fetch path falls back to the
+   * runner when not present.
+   */
+  fetch?(options?: VscodeGitFetchOptions): Promise<void>;
 }
 
 export interface VscodeGitRepositoryState {

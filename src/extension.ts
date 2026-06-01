@@ -22,6 +22,10 @@ import { resolveMergeBase } from './git/diff';
 import type { BlobReader } from './git/blob';
 import { runMergeTree } from './git/merge-tree';
 import {
+  checkRemoteForUpdates,
+  splitRemoteBranch,
+} from './git/remote-check';
+import {
   detectTargetRepository,
   isFileWithinRepository,
   type TargetRepository,
@@ -68,6 +72,10 @@ const SHOW_GUTTER_ICON_SETTING = 'showGutterIcon';
 const ENABLE_CONFLICT_PREDICTION_SETTING = 'enableConflictPrediction';
 const SHOW_FILE_DECORATION_COLORS_SETTING = 'showFileDecorationColors';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
+const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
+const AUTO_FETCH_SETTING = 'autoFetchOnRemoteUpdate';
+/** Upper bound on the timeout of a single auto-fetch invocation. */
+const FETCH_TIMEOUT_MS = 60_000;
 /**
  * Custom URI scheme used by the "Open Diff" command to feed the
  * base-side blob into VSCode's built-in diff editor. URIs look like
@@ -292,6 +300,13 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       ) {
         scheduleDecorationRefresh();
       }
+      if (
+        event.affectsConfiguration(
+          `${CONFIG_NAMESPACE}.${REMOTE_CHECK_INTERVAL_SETTING}`,
+        )
+      ) {
+        startOrRestartRemoteCheckTimer();
+      }
     }),
   );
 
@@ -351,6 +366,8 @@ async function refreshBaseBranch(): Promise<void> {
     applyWeakDecorationSettings();
     applyFileDecorationSettings();
     scheduleDecorationRefresh();
+    lastNotifiedRemoteSha = undefined;
+    startOrRestartRemoteCheckTimer();
     return;
   }
 
@@ -367,6 +384,7 @@ async function refreshBaseBranch(): Promise<void> {
       };
     });
     scheduleDecorationRefresh();
+    stopRemoteCheckTimer();
     notifyOnce(
       'configured-invalid',
       t(
@@ -389,6 +407,7 @@ async function refreshBaseBranch(): Promise<void> {
     };
   });
   scheduleDecorationRefresh();
+  stopRemoteCheckTimer();
   notifyOnce(
     'none-found',
     t(
@@ -690,6 +709,202 @@ function notifyOnce(
     void vscode.window.showInformationMessage(message);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Remote-update monitor (Phase 11)
+// ---------------------------------------------------------------------------
+
+let remoteCheckTimer: NodeJS.Timeout | undefined;
+let inflightRemoteCheck: AbortController | undefined;
+/**
+ * Cache of the remote SHA we have most recently warned the user about,
+ * so that successive timer ticks against the same upstream state do not
+ * re-fire the notification. Reset whenever the local tracking ref
+ * catches up (i.e. the check transitions to `up-to-date`).
+ */
+let lastNotifiedRemoteSha: string | undefined;
+
+function readRemoteCheckIntervalMinutes(): number {
+  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  return cfg.get<number>(REMOTE_CHECK_INTERVAL_SETTING, 5);
+}
+
+function isAutoFetchEnabled(): boolean {
+  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  return cfg.get<boolean>(AUTO_FETCH_SETTING, false);
+}
+
+/**
+ * (Re)start the remote-check interval timer. Idempotent — safe to call
+ * any number of times; previous timers are cleared first. Skips the
+ * timer entirely when we are not live, when the base branch is unset,
+ * or when the interval setting is `0` (the user-facing disable).
+ */
+function startOrRestartRemoteCheckTimer(): void {
+  stopRemoteCheckTimer();
+  if (currentState.kind !== 'live') return;
+  if (!currentState.context.baseBranch) return;
+  const intervalMin = readRemoteCheckIntervalMinutes();
+  if (!Number.isFinite(intervalMin) || intervalMin <= 0) return;
+  const intervalMs = intervalMin * 60_000;
+  remoteCheckTimer = setInterval(() => {
+    void performRemoteCheck();
+  }, intervalMs);
+  remoteCheckTimer.unref?.();
+}
+
+function stopRemoteCheckTimer(): void {
+  if (remoteCheckTimer) {
+    clearInterval(remoteCheckTimer);
+    remoteCheckTimer = undefined;
+  }
+  if (inflightRemoteCheck) {
+    inflightRemoteCheck.abort();
+    inflightRemoteCheck = undefined;
+  }
+}
+
+async function performRemoteCheck(): Promise<void> {
+  if (currentState.kind !== 'live') return;
+  const ctx = currentState.context;
+  if (!ctx.baseBranch || ctx.gitState.kind !== 'ready') return;
+
+  inflightRemoteCheck?.abort();
+  const controller = new AbortController();
+  inflightRemoteCheck = controller;
+
+  try {
+    const result = await checkRemoteForUpdates(
+      ctx.environment.runner,
+      ctx.repository.rootPath,
+      ctx.baseBranch,
+      { signal: controller.signal },
+    );
+    if (controller.signal.aborted) return;
+    if (result.kind === 'up-to-date') {
+      lastNotifiedRemoteSha = undefined;
+      return;
+    }
+    if (result.kind === 'error') {
+      runtime?.logChannel.info(`Remote check: ${result.reason}`);
+      return;
+    }
+    await handleRemoteBehind(ctx, result.remoteSha);
+  } catch (err) {
+    if (!controller.signal.aborted) {
+      runtime?.logChannel.warn(`performRemoteCheck threw: ${stringifyError(err)}`);
+    }
+  } finally {
+    if (inflightRemoteCheck === controller) {
+      inflightRemoteCheck = undefined;
+    }
+  }
+}
+
+async function handleRemoteBehind(
+  ctx: LiveContext,
+  remoteSha: string,
+): Promise<void> {
+  const baseBranch = ctx.baseBranch;
+  if (!baseBranch) return;
+
+  if (isAutoFetchEnabled()) {
+    runtime?.logChannel.info(
+      `Remote moved (${remoteSha.slice(0, 8)}); auto-fetching ${baseBranch}.`,
+    );
+    const ok = await tryFetch(ctx, baseBranch);
+    if (ok) {
+      lastNotifiedRemoteSha = undefined;
+      scheduleDecorationRefresh();
+    }
+    return;
+  }
+
+  // Manual mode: notify once per distinct remote SHA so the user is
+  // not nagged on every timer tick.
+  if (lastNotifiedRemoteSha === remoteSha) return;
+  lastNotifiedRemoteSha = remoteSha;
+  const fetchLabel = t('Fetch now');
+  const choice = await vscode.window.showInformationMessage(
+    t('{0}: {1} has moved upstream.', EXTENSION_NAME, baseBranch),
+    fetchLabel,
+  );
+  if (choice !== fetchLabel) return;
+  const ok = await tryFetch(ctx, baseBranch);
+  if (ok) {
+    lastNotifiedRemoteSha = undefined;
+    scheduleDecorationRefresh();
+  }
+}
+
+/**
+ * Fetch the base branch's remote. Prefers vscode.git's
+ * `Repository.fetch` because it integrates with the user's credential
+ * helper / passphrase prompts; falls back to a direct spawn when the
+ * built-in API does not surface a fetch method (older VSCode versions)
+ * or rejects.
+ */
+async function tryFetch(ctx: LiveContext, baseBranch: string): Promise<boolean> {
+  const split = await splitRemoteBranch(
+    ctx.environment.runner,
+    ctx.repository.rootPath,
+    baseBranch,
+  );
+  if (!split) {
+    runtime?.logChannel.warn(`Cannot determine remote for ${baseBranch}.`);
+    return false;
+  }
+
+  const handle = ctx.repository.handle;
+  if (typeof handle.fetch === 'function') {
+    try {
+      await handle.fetch({ remote: split.remote, ref: split.branch });
+      runtime?.logChannel.info(
+        `vscode.git fetched ${split.remote}/${split.branch}.`,
+      );
+      void vscode.window.showInformationMessage(
+        t('{0}: fetched updates for {1}.', EXTENSION_NAME, baseBranch),
+      );
+      return true;
+    } catch (err) {
+      runtime?.logChannel.warn(
+        `vscode.git fetch failed for ${split.remote}/${split.branch}: ${stringifyError(err)}`,
+      );
+    }
+  }
+
+  // Fallback: direct spawn.
+  try {
+    const result = await ctx.environment.runner.run(
+      ['fetch', '--end-of-options', split.remote, split.branch],
+      { cwd: ctx.repository.rootPath, timeoutMs: FETCH_TIMEOUT_MS },
+    );
+    if (result.exitCode !== 0) {
+      runtime?.logChannel.warn(
+        `git fetch exited ${result.exitCode}: ${result.stderr.trim()}`,
+      );
+      void vscode.window.showWarningMessage(
+        t('{0}: failed to fetch {1}.', EXTENSION_NAME, baseBranch),
+      );
+      return false;
+    }
+    runtime?.logChannel.info(`Spawn-fetched ${split.remote}/${split.branch}.`);
+    void vscode.window.showInformationMessage(
+      t('{0}: fetched updates for {1}.', EXTENSION_NAME, baseBranch),
+    );
+    return true;
+  } catch (err) {
+    runtime?.logChannel.warn(
+      `git fetch threw for ${split.remote}/${split.branch}: ${stringifyError(err)}`,
+    );
+    void vscode.window.showWarningMessage(
+      t('{0}: failed to fetch {1}.', EXTENSION_NAME, baseBranch),
+    );
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 async function safeDetectGitState(
   environment: GitEnvironment,
@@ -1200,6 +1415,8 @@ export function deactivate(): void {
   decorationRefreshPending = false;
   for (const timer of documentRefreshTimers.values()) clearTimeout(timer);
   documentRefreshTimers.clear();
+  stopRemoteCheckTimer();
+  lastNotifiedRemoteSha = undefined;
   runtime = undefined;
   currentState = { kind: 'initializing' };
   oneShotNotificationsShown = new Set();
