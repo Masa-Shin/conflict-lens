@@ -28,6 +28,8 @@
   "Choose a remote-tracking branch to compare against": "Choose a remote-tracking branch to compare against",
   "Changed relative to {0}": "Changed relative to {0}",
   "Will conflict when merging {0}": "Will conflict when merging {0}",
+  "Conflict Lens: changed by {0}": "Conflict Lens: changed by {0}",
+  "Conflict Lens: will conflict on merge with {0}": "Conflict Lens: will conflict on merge with {0}",
   "Select": "Select",
   "(no commits)": "(no commits)",
   "(rebasing)": "(rebasing)",

@@ -28,6 +28,10 @@ import {
 import { detectGitState, type GitState } from './git/state';
 import { t } from './l10n';
 import {
+  FileDecorationCoordinator,
+  type FileDecorationSettings,
+} from './ui/file-decoration';
+import {
   StrongDecorationCoordinator,
   type StrongHighlightInputs,
 } from './ui/strong-decoration';
@@ -60,12 +64,15 @@ const ENABLED_SETTING = 'enabled';
 const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
 const SHOW_GUTTER_ICON_SETTING = 'showGutterIcon';
 const ENABLE_CONFLICT_PREDICTION_SETTING = 'enableConflictPrediction';
+const SHOW_FILE_DECORATION_COLORS_SETTING = 'showFileDecorationColors';
+const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 
 interface RuntimeState {
   logChannel: vscode.LogOutputChannel;
   statusBarItem: vscode.StatusBarItem;
   weakDecorations: WeakDecorationCoordinator;
   strongDecorations: StrongDecorationCoordinator;
+  fileDecorations: FileDecorationCoordinator;
 }
 
 interface LiveContext {
@@ -127,9 +134,23 @@ export function activate(context: vscode.ExtensionContext): void {
     initialSettings,
     '(no base)',
   );
-  context.subscriptions.push(weakDecorations, strongDecorations);
+  const fileDecorations = new FileDecorationCoordinator(
+    readFileDecorationSettings(),
+  );
+  context.subscriptions.push(
+    weakDecorations,
+    strongDecorations,
+    fileDecorations,
+    vscode.window.registerFileDecorationProvider(fileDecorations),
+  );
 
-  runtime = { logChannel, statusBarItem, weakDecorations, strongDecorations };
+  runtime = {
+    logChannel,
+    statusBarItem,
+    weakDecorations,
+    strongDecorations,
+    fileDecorations,
+  };
   oneShotNotificationsShown = new Set();
   setState({ kind: 'initializing' });
 
@@ -234,10 +255,23 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       const visualsChanged =
         event.affectsConfiguration(`${CONFIG_NAMESPACE}.${SHOW_GUTTER_ICON_SETTING}`) ||
         event.affectsConfiguration(`${CONFIG_NAMESPACE}.${SHOW_OVERVIEW_RULER_SETTING}`);
+      const fileDecorationsChanged =
+        event.affectsConfiguration(
+          `${CONFIG_NAMESPACE}.${SHOW_FILE_DECORATION_COLORS_SETTING}`,
+        ) ||
+        event.affectsConfiguration(
+          `${CONFIG_NAMESPACE}.${SHOW_FILE_DECORATION_BADGES_SETTING}`,
+        );
 
       if (baseChanged) await refreshBaseBranch();
       if (visualsChanged) applyWeakDecorationSettings();
-      if (enabledChanged || visualsChanged || strongEnabledChanged) {
+      if (fileDecorationsChanged) applyFileDecorationSettings();
+      if (
+        enabledChanged ||
+        visualsChanged ||
+        strongEnabledChanged ||
+        fileDecorationsChanged
+      ) {
         scheduleDecorationRefresh();
       }
     }),
@@ -297,6 +331,7 @@ async function refreshBaseBranch(): Promise<void> {
       };
     });
     applyWeakDecorationSettings();
+    applyFileDecorationSettings();
     scheduleDecorationRefresh();
     return;
   }
@@ -367,6 +402,14 @@ function readWeakDecorationSettings(): WeakDecorationSettings {
   };
 }
 
+function readFileDecorationSettings(): FileDecorationSettings {
+  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  return {
+    showColors: cfg.get<boolean>(SHOW_FILE_DECORATION_COLORS_SETTING, true),
+    showBadges: cfg.get<boolean>(SHOW_FILE_DECORATION_BADGES_SETTING, true),
+  };
+}
+
 /**
  * Push the latest visual / label values into the coordinator. Always safe
  * to call; the coordinator no-ops when nothing changed and returns `true`
@@ -377,13 +420,25 @@ function readWeakDecorationSettings(): WeakDecorationSettings {
  */
 function applyWeakDecorationSettings(): void {
   if (!runtime) return;
-  const baseLabel =
-    currentState.kind === 'live' && currentState.context.baseBranch
-      ? currentState.context.baseBranch
-      : '(no base)';
+  const baseLabel = currentBaseBranchLabel();
   const settings = readWeakDecorationSettings();
   runtime.weakDecorations.refreshVisuals(settings, baseLabel);
   runtime.strongDecorations.refreshVisuals(settings, baseLabel);
+}
+
+function applyFileDecorationSettings(): void {
+  if (!runtime) return;
+  runtime.fileDecorations.updateSettings(
+    readFileDecorationSettings(),
+    currentBaseBranchLabel(),
+  );
+}
+
+function currentBaseBranchLabel(): string {
+  if (currentState.kind === 'live' && currentState.context.baseBranch) {
+    return currentState.context.baseBranch;
+  }
+  return '(no base)';
 }
 
 function isStrongHighlightEnabled(): boolean {
@@ -475,7 +530,7 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
 
 async function refreshDecorationsNow(): Promise<void> {
   if (!runtime) return;
-  const { weakDecorations, strongDecorations } = runtime;
+  const { weakDecorations, strongDecorations, fileDecorations } = runtime;
   const editors = vscode.window.visibleTextEditors;
 
   const clearAll = () => {
@@ -483,6 +538,7 @@ async function refreshDecorationsNow(): Promise<void> {
       weakDecorations.clear(editor);
       strongDecorations.clear(editor);
     }
+    fileDecorations.clear();
   };
 
   if (!isEnabled() || currentState.kind !== 'live') {
@@ -514,9 +570,24 @@ async function refreshDecorationsNow(): Promise<void> {
   };
   const strongEnabled = isStrongHighlightEnabled();
 
-  await Promise.all(
-    editors.map((editor) => applyToEditor(editor, inputs, strongEnabled)),
-  );
+  await Promise.all([
+    ...editors.map((editor) => applyToEditor(editor, inputs, strongEnabled)),
+    fileDecorations
+      .refresh(
+        {
+          runner: inputs.runner,
+          repoRootPath: inputs.repoRootPath,
+          baseBranch: inputs.baseBranch,
+          mergeBaseSha,
+        },
+        strongEnabled,
+      )
+      .catch((err) => {
+        runtime?.logChannel.warn(
+          `fileDecorations.refresh failed: ${stringifyError(err)}`,
+        );
+      }),
+  ]);
 }
 
 /**
