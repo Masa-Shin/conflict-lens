@@ -16,7 +16,8 @@
   "{0}: highlighting paused while merge is in progress.": "{0}: highlighting paused while merge is in progress.",
   "{0}: highlighting paused while cherry-pick is in progress.": "{0}: highlighting paused while cherry-pick is in progress.",
   "{0}: highlighting paused while revert is in progress.": "{0}: highlighting paused while revert is in progress.",
-  "{0}: not ready yet. Open a git repository first.": "{0}: not ready yet. Open a git repository first.",
+  "{0}: still initializing, please retry shortly.": "{0}: still initializing, please retry shortly.",
+  "{0}: not available in this workspace.": "{0}: not available in this workspace.",
   "{0}: failed to enumerate remote branches.": "{0}: failed to enumerate remote branches.",
   "{0}: no remote-tracking branches found. Run git fetch first.": "{0}: no remote-tracking branches found. Run git fetch first.",
   "{0}: failed to save selection.": "{0}: failed to save selection.",
@@ -24,5 +25,13 @@
   "{0}: could not detect a base branch. Run Select Base Branch to set one.": "{0}: could not detect a base branch. Run Select Base Branch to set one.",
   "{0}: comparing against {1}. Click to open the output channel.": "{0}: comparing against {1}. Click to open the output channel.",
   "{0}: no base branch selected.": "{0}: no base branch selected.",
-  "Choose a remote-tracking branch to compare against": "Choose a remote-tracking branch to compare against"
+  "Choose a remote-tracking branch to compare against": "Choose a remote-tracking branch to compare against",
+  "Select": "Select",
+  "(no commits)": "(no commits)",
+  "(rebasing)": "(rebasing)",
+  "(merging)": "(merging)",
+  "(cherry-picking)": "(cherry-picking)",
+  "(reverting)": "(reverting)",
+  "detached": "detached",
+  "bisecting": "bisecting"
 }

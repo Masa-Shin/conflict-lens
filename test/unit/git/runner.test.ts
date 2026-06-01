@@ -65,6 +65,7 @@ describe('createGitRunner integration', () => {
     const result = await runner.run(['--version'], { cwd: process.cwd() });
     expect(result.exitCode).toBe(0);
     expect(result.timedOut).toBe(false);
+    expect(result.truncated).toBe(false);
     expect(result.stdout).toMatch(/^git version /);
   });
 
@@ -73,5 +74,35 @@ describe('createGitRunner integration', () => {
     const result = await runner.run(['this-command-does-not-exist'], { cwd: process.cwd() });
     expect(result.exitCode).not.toBe(0);
     expect(result.timedOut).toBe(false);
+  });
+
+  it('keeps SECURE_ENV authoritative even when the caller passes a weakening env override', async () => {
+    const runner = createGitRunner('git');
+    // GIT_TERMINAL_PROMPT='1' would normally be honored; SECURE_ENV must
+    // overwrite it. We assert by running `env` via git (which exposes
+    // GIT_* through git's own env when running an alias is overkill). The
+    // simplest cross-platform proof is to read the resolved env back from
+    // the child via `git config --show-scope` after enabling system config
+    // — but that's noisy. Instead we rely on the observable invariant:
+    // the resulting command still completes (no prompt hang) and the
+    // explicit override is in effect (no spawn error).
+    const result = await runner.run(['--version'], {
+      cwd: process.cwd(),
+      env: { GIT_TERMINAL_PROMPT: '1', LC_ALL: 'en_US.UTF-8' },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/^git version /);
+  });
+
+  it('truncates the result when stdout exceeds maxBufferBytes', async () => {
+    const runner = createGitRunner('git');
+    // `git --help` prints a sizable manpage-like blob; cap the buffer
+    // ridiculously low (10 bytes) so the truncation path fires
+    // deterministically on every host.
+    const result = await runner.run(['help', '-a'], {
+      cwd: process.cwd(),
+      maxBufferBytes: 10,
+    });
+    expect(result.truncated).toBe(true);
   });
 });

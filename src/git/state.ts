@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { splitLines } from '../util/text';
 import type { GitRunner } from './runner';
 
 /**
@@ -35,6 +36,13 @@ type MidOpKey = (typeof MID_OP_PATHS)[number];
 
 export interface DetectGitStateOptions {
   readonly signal?: AbortSignal;
+  /**
+   * Optional warning sink. When the function falls back to a safe state due
+   * to unexpected git output, callers (e.g. extension.ts) can record what
+   * happened to the output channel via this callback. Detection itself
+   * stays vscode-agnostic.
+   */
+  readonly onWarn?: (message: string) => void;
 }
 
 /**
@@ -54,7 +62,7 @@ export async function detectGitState(
   repoRootPath: string,
   options: DetectGitStateOptions = {},
 ): Promise<GitState> {
-  const { signal } = options;
+  const { signal, onWarn } = options;
 
   // Step 1: HEAD existence (no-commits has highest priority).
   const head = await runner.run(['rev-parse', '--verify', 'HEAD'], {
@@ -74,7 +82,11 @@ export async function detectGitState(
 
   let markers: Record<MidOpKey, boolean>;
   if (pathLookup.exitCode === 0) {
-    const lines = pathLookup.stdout.split('\n').filter((line) => line.length > 0);
+    // splitLines, not split('\n'): git on Windows emits CRLF text-mode and a
+    // raw \n split would leave \r on every line, making path.resolve produce
+    // paths that never exist → all markers silently false → state stuck
+    // on `ready` even mid-rebase.
+    const lines = splitLines(pathLookup.stdout).filter((line) => line.length > 0);
     if (lines.length === MID_OP_PATHS.length) {
       const resolvedPaths = lines.map((line) => resolveRepoRelative(repoRootPath, line));
       const existenceFlags = await Promise.all(resolvedPaths.map(pathExists));
@@ -82,10 +94,15 @@ export async function detectGitState(
         MID_OP_PATHS.map((key, i) => [key, existenceFlags[i]]),
       ) as Record<MidOpKey, boolean>;
     } else {
-      // Unexpected output shape: be conservative and assume no in-progress op.
+      onWarn?.(
+        `detectGitState: expected ${MID_OP_PATHS.length} --git-path lines, got ${lines.length}. Treating as no in-progress op.`,
+      );
       markers = emptyMarkers();
     }
   } else {
+    onWarn?.(
+      `detectGitState: rev-parse --git-path failed (exit ${pathLookup.exitCode}). Treating as no in-progress op.`,
+    );
     markers = emptyMarkers();
   }
 
@@ -160,9 +177,8 @@ function resolveRepoRelative(repoRootPath: string, candidate: string): string {
 }
 
 async function pathExists(p: string): Promise<boolean> {
-  if (!p) return false;
   try {
-    await fs.promises.access(p);
+    await fs.promises.access(p, fs.constants.F_OK);
     return true;
   } catch {
     return false;

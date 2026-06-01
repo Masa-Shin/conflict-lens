@@ -1,3 +1,4 @@
+import { splitLines } from '../util/text';
 import type { GitRunner } from './runner';
 
 /** Remote-tracking branch inventory for a repository. */
@@ -71,8 +72,9 @@ export async function listRemoteBranches(
 async function readRemotes(runner: GitRunner, cwd: string): Promise<string[]> {
   const result = await runner.run(['remote'], { cwd });
   if (result.exitCode !== 0) return [];
-  return result.stdout
-    .split('\n')
+  // Use splitLines (not split('\n')) so a CRLF-mode git on Windows does not
+  // leave a trailing \r that breaks the allow-list match.
+  return splitLines(result.stdout)
     .map((line) => line.trim())
     .filter((line) => REMOTE_NAME_PATTERN.test(line));
 }
@@ -84,9 +86,11 @@ async function readRemoteRefs(runner: GitRunner, cwd: string): Promise<string[]>
   );
   if (result.exitCode !== 0) return [];
   const out: string[] = [];
-  for (const line of result.stdout.split('\n')) {
+  for (const line of splitLines(result.stdout)) {
     if (line.length === 0) continue;
     const tab = line.indexOf('\t');
+    // The format string always emits a tab. tab === -1 should be impossible
+    // for git ≥ 2.30; we keep the defensive branch as a guard.
     const name = tab === -1 ? line : line.slice(0, tab);
     const symref = tab === -1 ? '' : line.slice(tab + 1);
     if (symref.length > 0) continue; // skip symbolic refs (e.g. origin/HEAD)

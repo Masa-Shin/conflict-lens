@@ -7,12 +7,23 @@ import { Buffer } from 'node:buffer';
 export interface GitCommandOptions {
   /** Working directory. Must be set explicitly to avoid process.cwd() leaking through. */
   readonly cwd: string;
-  /** Extra environment variables, merged on top of process.env and SECURE_ENV. */
+  /**
+   * Extra environment variables. Merged *under* SECURE_ENV so the caller
+   * cannot accidentally re-enable `GIT_TERMINAL_PROMPT` or weaken any of
+   * the hardening flags.
+   */
   readonly env?: NodeJS.ProcessEnv;
   /** AbortSignal for cancellation. The child will be killed with SIGTERM. */
   readonly signal?: AbortSignal;
   /** Override the default per-invocation timeout (milliseconds). */
   readonly timeoutMs?: number;
+  /**
+   * Per-stream maximum buffered bytes (stdout *and* stderr counted
+   * separately). When exceeded, the child is killed and the result is
+   * marked `truncated`. Defaults to `DEFAULT_MAX_BUFFER_BYTES` so a
+   * runaway blob fetch cannot exhaust the extension-host heap.
+   */
+  readonly maxBufferBytes?: number;
   /** Data to pipe to stdin. */
   readonly stdin?: string | Buffer;
 }
@@ -23,6 +34,8 @@ export interface GitCommandResult {
   readonly exitCode: number;
   /** True if the command was killed because the timeout fired. */
   readonly timedOut: boolean;
+  /** True if the command was killed because the buffer cap was exceeded. */
+  readonly truncated: boolean;
 }
 
 export interface GitRunner {
@@ -34,6 +47,13 @@ export interface GitRunner {
 
 /** Default upper bound for a single git command (spec §5.4). */
 export const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * Default per-stream buffer cap. Picked to comfortably hold a large diff
+ * or a multi-megabyte blob while still bounding worst-case memory usage
+ * to a few times this value across all in-flight processes.
+ */
+export const DEFAULT_MAX_BUFFER_BYTES = 64 * 1024 * 1024; // 64 MiB
 
 /**
  * Environment variables that suppress interactive prompts and disable
@@ -98,7 +118,10 @@ function runGit(
   options: GitCommandOptions,
 ): Promise<GitCommandResult> {
   return new Promise<GitCommandResult>((resolve, reject) => {
-    const env: NodeJS.ProcessEnv = { ...process.env, ...SECURE_ENV, ...options.env };
+    // process.env is the weakest layer, the caller's overrides come next,
+    // and SECURE_ENV wins last so hardening (GIT_TERMINAL_PROMPT=0 etc.)
+    // can never be loosened by accident.
+    const env: NodeJS.ProcessEnv = { ...process.env, ...options.env, ...SECURE_ENV };
     const child = spawn(gitPath, [...SECURE_ARGS, ...args], {
       cwd: options.cwd,
       env,
@@ -109,7 +132,11 @@ function runGit(
 
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
     let timedOut = false;
+    let truncated = false;
+    const maxBufferBytes = options.maxBufferBytes ?? DEFAULT_MAX_BUFFER_BYTES;
 
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const timeoutId = setTimeout(() => {
@@ -118,8 +145,26 @@ function runGit(
     }, timeoutMs);
     timeoutId.unref?.();
 
-    child.stdout?.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
-    child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+    child.stdout?.on('data', (chunk: Buffer) => {
+      if (truncated) return;
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > maxBufferBytes) {
+        truncated = true;
+        child.kill('SIGTERM');
+        return;
+      }
+      stdoutChunks.push(chunk);
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (truncated) return;
+      stderrBytes += chunk.length;
+      if (stderrBytes > maxBufferBytes) {
+        truncated = true;
+        child.kill('SIGTERM');
+        return;
+      }
+      stderrChunks.push(chunk);
+    });
 
     child.once('error', (err) => {
       clearTimeout(timeoutId);
@@ -133,6 +178,7 @@ function runGit(
         stderr: Buffer.concat(stderrChunks).toString('utf8'),
         exitCode: exitCode ?? -1,
         timedOut,
+        truncated,
       });
     });
 

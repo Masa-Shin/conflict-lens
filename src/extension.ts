@@ -16,11 +16,7 @@ import {
   type TargetRepository,
   type TargetRepositoryResult,
 } from './git/repository';
-import {
-  detectGitState,
-  statusLabelFor,
-  type GitState,
-} from './git/state';
+import { detectGitState, type GitState } from './git/state';
 import { t } from './l10n';
 import { assertNever, stringifyError } from './util/error';
 
@@ -214,7 +210,7 @@ async function refreshBaseBranch(): Promise<void> {
         EXTENSION_NAME,
         resolution.configured,
       ),
-      { action: 'Select' },
+      { action: 'select-base-branch' },
     );
     return;
   }
@@ -234,7 +230,7 @@ async function refreshBaseBranch(): Promise<void> {
       '{0}: could not detect a base branch. Run Select Base Branch to set one.',
       EXTENSION_NAME,
     ),
-    { action: 'Select' },
+    { action: 'select-base-branch' },
   );
 }
 
@@ -246,19 +242,30 @@ function readConfiguredBaseBranch(scope: vscode.Uri | undefined): string | undef
   return trimmed.length === 0 ? undefined : trimmed;
 }
 
+type NotificationAction = 'select-base-branch';
+
 function notifyOnce(
   key: string,
   message: string,
-  options: { action?: string } = {},
+  options: { action?: NotificationAction } = {},
 ): void {
   if (oneShotNotificationsShown.has(key)) return;
   oneShotNotificationsShown.add(key);
-  const actions = options.action ? [options.action] : [];
-  void vscode.window.showInformationMessage(message, ...actions).then((choice) => {
-    if (choice === 'Select') {
-      void vscode.commands.executeCommand('conflictLens.selectBaseBranch');
-    }
-  });
+  if (options.action === 'select-base-branch') {
+    // Capture the localized label once so we can compare it back to `choice`
+    // safely. Comparing against the English literal 'Select' would break the
+    // moment a localized bundle ships.
+    const label = t('Select');
+    void vscode.window
+      .showInformationMessage(message, label)
+      .then((choice) => {
+        if (choice === label) {
+          void vscode.commands.executeCommand('conflictLens.selectBaseBranch');
+        }
+      });
+  } else {
+    void vscode.window.showInformationMessage(message);
+  }
 }
 
 async function safeDetectGitState(
@@ -266,7 +273,9 @@ async function safeDetectGitState(
   repository: TargetRepository,
 ): Promise<GitState> {
   try {
-    return await detectGitState(environment.runner, repository.rootPath);
+    return await detectGitState(environment.runner, repository.rootPath, {
+      onWarn: (msg) => runtime?.logChannel.warn(msg),
+    });
   } catch (err) {
     runtime?.logChannel.warn(`detectGitState threw: ${stringifyError(err)}`);
     return { kind: 'ready', detached: false, bisecting: false };
@@ -409,7 +418,7 @@ function renderStatusBar(state: ExtensionState): void {
     case 'live': {
       const { context } = state;
       const baseLabel = context.baseBranch ?? '(no base)';
-      const stateLabel = statusLabelFor(context.gitState);
+      const stateLabel = localizedStateLabel(context.gitState);
       if (context.gitState.kind === 'ready') {
         statusBarItem.text = stateLabel
           ? `${EXTENSION_NAME}: ${baseLabel} ${stateLabel}`
@@ -422,6 +431,36 @@ function renderStatusBar(state: ExtensionState): void {
     }
     default:
       assertNever(state);
+  }
+}
+
+/**
+ * Translate a GitState to a status-bar suffix. Equivalent in shape to
+ * `statusLabelFor` from src/git/state.ts, but routed through `t()` so the
+ * label survives bundle replacement. The pure helper is intentionally kept
+ * in state.ts so that unit tests do not depend on vscode.
+ */
+function localizedStateLabel(state: GitState): string {
+  switch (state.kind) {
+    case 'no-commits':
+      return t('(no commits)');
+    case 'rebasing':
+      return t('(rebasing)');
+    case 'merging':
+      return t('(merging)');
+    case 'cherry-picking':
+      return t('(cherry-picking)');
+    case 'reverting':
+      return t('(reverting)');
+    case 'ready': {
+      if (!state.detached && !state.bisecting) return '';
+      const mods: string[] = [];
+      if (state.detached) mods.push(t('detached'));
+      if (state.bisecting) mods.push(t('bisecting'));
+      return `(${mods.join(', ')})`;
+    }
+    default:
+      return assertNever(state);
   }
 }
 
@@ -485,9 +524,15 @@ function registerCommands(context: vscode.ExtensionContext): void {
 }
 
 async function selectBaseBranchCommand(): Promise<void> {
-  if (currentState.kind !== 'live') {
+  if (currentState.kind === 'initializing') {
     void vscode.window.showInformationMessage(
-      t('{0}: not ready yet. Open a git repository first.', EXTENSION_NAME),
+      t('{0}: still initializing, please retry shortly.', EXTENSION_NAME),
+    );
+    return;
+  }
+  if (currentState.kind === 'unavailable') {
+    void vscode.window.showInformationMessage(
+      t('{0}: not available in this workspace.', EXTENSION_NAME),
     );
     return;
   }
@@ -519,7 +564,7 @@ async function selectBaseBranchCommand(): Promise<void> {
   }));
   const picked = await vscode.window.showQuickPick(items, {
     title: `${EXTENSION_NAME}: Select Base Branch`,
-    placeHolder: t('Choose a remote-tracking branch to compare against', EXTENSION_NAME),
+    placeHolder: t('Choose a remote-tracking branch to compare against'),
     matchOnDescription: true,
   });
   if (!picked) return;

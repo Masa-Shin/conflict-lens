@@ -52,7 +52,7 @@ export async function detectTargetRepository(params: {
 
   const immediate = findRepositoryContaining(gitApi.repositories, canonicalFolderPath);
   if (immediate) {
-    return await classifyRepository(immediate, runner, canonicalFolderPath);
+    return await classifyRepository(immediate, runner);
   }
 
   const waitResult = await waitForRepository(
@@ -63,7 +63,7 @@ export async function detectTargetRepository(params: {
   if (!waitResult) {
     return { kind: 'timed-out' };
   }
-  return await classifyRepository(waitResult, runner, canonicalFolderPath);
+  return await classifyRepository(waitResult, runner);
 }
 
 function waitForRepository(
@@ -92,35 +92,51 @@ function waitForRepository(
   });
 }
 
+/**
+ * Pick the repository whose root contains `canonicalFolderPath`. When two
+ * repos qualify (the typical case: a workspace folder opened inside a
+ * submodule will match both the parent repo and the submodule itself), we
+ * choose the **deepest** matching root. That way a user who opens
+ * `/proj/sub` directly gets the submodule classified (and subsequently
+ * rejected as `submodule`), instead of silently being assigned the parent
+ * repo `/proj`, which would defeat the spec §3.1.3 submodule exclusion.
+ */
 function findRepositoryContaining(
   repositories: readonly VscodeGitRepository[],
   canonicalFolderPath: string,
 ): VscodeGitRepository | undefined {
+  let best: { repo: VscodeGitRepository; depth: number } | undefined;
   for (const repo of repositories) {
-    if (repositoryContains(repo, canonicalFolderPath)) {
-      return repo;
+    const repoPath = canonicalRepoRoot(repo);
+    if (!repoPath) continue;
+    if (!isSamePathOrUnder(canonicalFolderPath, repoPath)) continue;
+    if (!best || repoPath.length > best.depth) {
+      best = { repo, depth: repoPath.length };
     }
   }
-  return undefined;
+  return best?.repo;
 }
 
 function repositoryContains(
   repo: VscodeGitRepository,
   canonicalFolderPath: string,
 ): boolean {
-  let repoPath: string;
-  try {
-    repoPath = fs.realpathSync(repo.rootUri.fsPath);
-  } catch {
-    return false;
-  }
+  const repoPath = canonicalRepoRoot(repo);
+  if (!repoPath) return false;
   return isSamePathOrUnder(canonicalFolderPath, repoPath);
+}
+
+function canonicalRepoRoot(repo: VscodeGitRepository): string | undefined {
+  try {
+    return fs.realpathSync(repo.rootUri.fsPath);
+  } catch {
+    return undefined;
+  }
 }
 
 async function classifyRepository(
   handle: VscodeGitRepository,
   runner: GitRunner,
-  _fallbackCwd: string,
 ): Promise<TargetRepositoryResult> {
   // Canonical path is a hard contract of TargetRepository.rootPath. If
   // realpath fails (deleted directory, permission revoked between detection
