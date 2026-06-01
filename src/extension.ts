@@ -907,13 +907,18 @@ function registerCommands(context: vscode.ExtensionContext): void {
       'conflictLens.selectBaseBranch',
       selectBaseBranchCommand,
     ),
+    vscode.commands.registerCommand('conflictLens.enable', () =>
+      setEnabledCommand(true),
+    ),
+    vscode.commands.registerCommand('conflictLens.disable', () =>
+      setEnabledCommand(false),
+    ),
+    vscode.commands.registerCommand('conflictLens.toggle', toggleEnabledCommand),
+    vscode.commands.registerCommand('conflictLens.refresh', refreshCommand),
   );
 
+  // Phase 10 deferred: showChangedFiles and openDiff still stubbed.
   const stubs: ReadonlyArray<[command: string, label: string]> = [
-    ['conflictLens.enable', 'Enable'],
-    ['conflictLens.disable', 'Disable'],
-    ['conflictLens.toggle', 'Toggle'],
-    ['conflictLens.refresh', 'Refresh'],
     ['conflictLens.showChangedFiles', 'Show Changed Files'],
     ['conflictLens.openDiff', 'Open Diff'],
   ];
@@ -926,6 +931,34 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }),
     );
   }
+}
+
+async function setEnabledCommand(value: boolean): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  try {
+    await cfg.update(ENABLED_SETTING, value, vscode.ConfigurationTarget.Workspace);
+  } catch (err) {
+    runtime?.logChannel.warn(`Saving enabled=${value} failed: ${stringifyError(err)}`);
+  }
+}
+
+async function toggleEnabledCommand(): Promise<void> {
+  await setEnabledCommand(!isEnabled());
+}
+
+/**
+ * Force a full recompute: drop every line-decoration cache, reset the
+ * file-decoration soft cache, and re-resolve the base branch. The
+ * subsequent refresh runs the full pipeline (diff, blob fetch, merge-file,
+ * etc.) instead of serving from the LRU.
+ */
+async function refreshCommand(): Promise<void> {
+  if (!runtime) return;
+  runtime.weakDecorations.invalidateAll();
+  runtime.strongDecorations.invalidateAll();
+  runtime.fileDecorations.clear();
+  await refreshBaseBranch();
+  scheduleDecorationRefresh();
 }
 
 async function selectBaseBranchCommand(): Promise<void> {
