@@ -31,6 +31,12 @@ export interface WeakHighlightInputs {
   readonly baseBranch: string;
   readonly mergeBaseSha: string;
   readonly readBlob: BlobReader;
+  /**
+   * Spec §3.4: suppress line decorations when the base-side diff has
+   * more than this many hunks (weak) or the trial merge has this many
+   * conflicts (strong). `0` disables the gate.
+   */
+  readonly largeFileHunkThreshold: number;
 }
 
 /** Toggleable visuals. Background color / hover always render. */
@@ -147,6 +153,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       relativeFilePath,
       rightContent: document.getText(),
       readBlob: inputs.readBlob,
+      largeFileHunkThreshold: inputs.largeFileHunkThreshold,
       signal: controller.signal,
     });
     const entry: InflightEntry = { controller, promise };

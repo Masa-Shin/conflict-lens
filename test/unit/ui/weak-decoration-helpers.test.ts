@@ -11,6 +11,7 @@ describe('cacheKeyFor', () => {
     repoRootPath: '/repo',
     baseBranch: 'origin/main',
     mergeBaseSha: 'abc123',
+    largeFileHunkThreshold: 200,
   };
 
   it('produces a stable key for identical inputs', () => {
@@ -30,6 +31,12 @@ describe('cacheKeyFor', () => {
 
   it('treats version 0 and a falsy-looking version distinctly from no version', () => {
     expect(cacheKeyFor('a.ts', inputs, 0)).not.toBe(cacheKeyFor('a.ts', inputs, 1));
+  });
+
+  it('changes when the largeFileHunkThreshold changes', () => {
+    expect(cacheKeyFor('a.ts', inputs, 7)).not.toBe(
+      cacheKeyFor('a.ts', { ...inputs, largeFileHunkThreshold: 50 }, 7),
+    );
   });
 });
 

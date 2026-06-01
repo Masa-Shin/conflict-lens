@@ -27,10 +27,11 @@ export function cacheKeyFor(
     readonly repoRootPath: string;
     readonly baseBranch: string;
     readonly mergeBaseSha: string;
+    readonly largeFileHunkThreshold: number;
   },
   documentVersion: number,
 ): string {
-  return `${inputs.baseBranch} ${inputs.mergeBaseSha} v${documentVersion} ${inputs.repoRootPath} ${relativeFilePath}`;
+  return `${inputs.baseBranch} ${inputs.mergeBaseSha} t${inputs.largeFileHunkThreshold} v${documentVersion} ${inputs.repoRootPath} ${relativeFilePath}`;
 }
 
 /**

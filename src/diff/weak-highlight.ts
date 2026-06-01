@@ -39,6 +39,12 @@ export interface ComputeWeakHighlightsParams {
    * `createBlobReaderFromRunner` for isolation.
    */
   readonly readBlob: BlobReader;
+  /**
+   * If the base-side diff produces more than this many hunks the file
+   * is treated as auto-generated noise and weak highlights are
+   * suppressed. `0` or omitted disables the gate.
+   */
+  readonly largeFileHunkThreshold?: number;
   readonly signal?: AbortSignal;
 }
 
@@ -72,6 +78,10 @@ export async function computeWeakHighlights(
 
   const hunks = await runBaseDiff(runner, repoRootPath, baseBranch, relativeFilePath, { signal });
   if (hunks.length === 0) return [];
+  const threshold = params.largeFileHunkThreshold;
+  if (typeof threshold === 'number' && threshold > 0 && hunks.length > threshold) {
+    return [];
+  }
 
   const leftContent = await readBlob(mergeBaseSha, relativeFilePath, { signal });
   const mapping = buildLineMapping(leftContent, rightContent);

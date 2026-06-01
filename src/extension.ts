@@ -74,6 +74,7 @@ const SHOW_FILE_DECORATION_COLORS_SETTING = 'showFileDecorationColors';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
 const AUTO_FETCH_SETTING = 'autoFetchOnRemoteUpdate';
+const LARGE_FILE_HUNK_THRESHOLD_SETTING = 'largeFileHunkThreshold';
 /** Upper bound on the timeout of a single auto-fetch invocation. */
 const FETCH_TIMEOUT_MS = 60_000;
 /**
@@ -288,6 +289,9 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
         event.affectsConfiguration(
           `${CONFIG_NAMESPACE}.${SHOW_FILE_DECORATION_BADGES_SETTING}`,
         );
+      const thresholdChanged = event.affectsConfiguration(
+        `${CONFIG_NAMESPACE}.${LARGE_FILE_HUNK_THRESHOLD_SETTING}`,
+      );
 
       if (baseChanged) await refreshBaseBranch();
       if (visualsChanged) applyWeakDecorationSettings();
@@ -296,8 +300,12 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
         enabledChanged ||
         visualsChanged ||
         strongEnabledChanged ||
-        fileDecorationsChanged
+        fileDecorationsChanged ||
+        thresholdChanged
       ) {
+        // Threshold changes alter the cache-key dimension, so existing
+        // entries are not stale — they live under different keys.
+        // Refresh suffices.
         scheduleDecorationRefresh();
       }
       if (
@@ -483,6 +491,15 @@ function isStrongHighlightEnabled(): boolean {
   return cfg.get<boolean>(ENABLE_CONFLICT_PREDICTION_SETTING, true);
 }
 
+function readLargeFileHunkThreshold(): number {
+  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const raw = cfg.get<number>(LARGE_FILE_HUNK_THRESHOLD_SETTING, 200);
+  // Coerce non-finite or negative input to "no gate" so a broken
+  // settings.json cannot suppress every highlight.
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.floor(raw);
+}
+
 let decorationRefreshPending = false;
 let decorationRefreshTimer: NodeJS.Timeout | undefined;
 const documentRefreshTimers = new Map<string, NodeJS.Timeout>();
@@ -559,6 +576,7 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
     baseBranch: ctx.baseBranch,
     mergeBaseSha,
     readBlob: ctx.readBlob,
+    largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
   const strongEnabled = isStrongHighlightEnabled();
 
@@ -604,6 +622,7 @@ async function refreshDecorationsNow(): Promise<void> {
     baseBranch: ctx.baseBranch,
     mergeBaseSha,
     readBlob: ctx.readBlob,
+    largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
   const strongEnabled = isStrongHighlightEnabled();
 

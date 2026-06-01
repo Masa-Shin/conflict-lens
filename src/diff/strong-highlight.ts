@@ -35,6 +35,12 @@ export interface ComputeStrongHighlightsParams {
    */
   readonly oursContent: string;
   readonly readBlob: BlobReader;
+  /**
+   * If the trial merge produces more than this many conflict regions
+   * the file is treated as too noisy to highlight precisely; strong
+   * highlights are suppressed. `0` or omitted disables the gate.
+   */
+  readonly largeFileHunkThreshold?: number;
   readonly signal?: AbortSignal;
 }
 
@@ -87,5 +93,13 @@ export async function computeStrongHighlights(
     { signal },
   );
   if (merged.conflictCount === 0) return [];
+  const threshold = params.largeFileHunkThreshold;
+  if (
+    typeof threshold === 'number' &&
+    threshold > 0 &&
+    merged.conflictCount > threshold
+  ) {
+    return [];
+  }
   return parseConflictMarkers(merged.content);
 }

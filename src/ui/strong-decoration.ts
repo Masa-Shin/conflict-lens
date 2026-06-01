@@ -113,6 +113,7 @@ export class StrongDecorationCoordinator implements vscode.Disposable {
       relativeFilePath,
       oursContent: document.getText(),
       readBlob: inputs.readBlob,
+      largeFileHunkThreshold: inputs.largeFileHunkThreshold,
       signal: controller.signal,
     });
     const entry: InflightEntry = { controller, promise };
