@@ -27,6 +27,58 @@ export function classifyHunk(hunk: DiffHunk): HunkKind {
 
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
+import type { GitRunner } from './runner';
+
+/**
+ * Run the "base-side diff" — the changes the base branch has accumulated
+ * relative to the merge-base with HEAD. Hunk header line numbers are in
+ * merge-base coordinates; conversion to HEAD coordinates is the caller's
+ * responsibility (see src/diff/mapping.ts).
+ *
+ * Flags:
+ *  - `--merge-base HEAD <baseBranch>`: diff from merge-base(HEAD, base) to base.
+ *  - `--unified=0`: drop context lines so the hunk headers contain pure
+ *    change ranges.
+ *  - `--no-ext-diff` / `--no-textconv`: refuse to execute user-defined
+ *    diff drivers (spec §5.5 S2).
+ *  - `--no-color`: deterministic output.
+ *  - `-M`: detect renames so a moved file doesn't appear as a full delete +
+ *    full add.
+ *  - `--end-of-options`: harden against `<baseBranch>` strings that start
+ *    with `--`.
+ */
+export async function runBaseDiff(
+  runner: GitRunner,
+  repoRootPath: string,
+  baseBranch: string,
+  relativeFilePath: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<DiffHunk[]> {
+  const result = await runner.run(
+    [
+      'diff',
+      '--merge-base',
+      '--unified=0',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--no-color',
+      '-M',
+      '--end-of-options',
+      'HEAD',
+      baseBranch,
+      '--',
+      relativeFilePath,
+    ],
+    { cwd: repoRootPath, signal: options.signal },
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `git diff (base side) for ${relativeFilePath} exited with ${result.exitCode}: ${result.stderr.trim()}`,
+    );
+  }
+  return parseHunkHeaders(result.stdout);
+}
+
 /**
  * Extract all hunk headers from a unified-diff payload. Non-`@@` lines are
  * ignored, so the function tolerates `diff --git`, `index`, `---`, `+++`
