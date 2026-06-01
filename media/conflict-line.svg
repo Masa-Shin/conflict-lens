@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!--
+    Strong-highlight gutter icon (spec §3.2.1).
+    Triangle shape so the icon is distinguishable from the weak-highlight
+    bar without relying on color (color-vision accessibility).
+    Color is fixed (not a ThemeColor); the line background color is
+    themed separately via ThemeColor on the decoration type.
+  -->
+  <polygon points="3,3 13,3 8,13" fill="#f14c4c" fill-opacity="0.95" />
+</svg>
