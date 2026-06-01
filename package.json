@@ -8,6 +8,21 @@
   "engines": {
     "vscode": "^1.74.0"
   },
+  "categories": [
+    "SCM Providers",
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "conflict",
+    "merge",
+    "highlight",
+    "diff",
+    "base branch",
+    "pull request",
+    "code review"
+  ],
   "main": "./dist/extension.js",
   "l10n": "./l10n",
   "extensionDependencies": [
