@@ -190,4 +190,35 @@ describe('parseConflictMarkers', () => {
     ].join('\n');
     expect(parseConflictMarkers(content)).toEqual([]);
   });
+
+  it('clamps an end-of-file insertion anchor onto the last ours line', () => {
+    // Ours = ["A", "B"]; theirs appends a third line after B.
+    const content = [
+      'A',
+      'B',
+      '<<<<<<< ours',
+      '||||||| base',
+      '=======',
+      'C-theirs',
+      '>>>>>>> theirs',
+      '',
+    ].join('\n');
+    expect(parseConflictMarkers(content)).toEqual([
+      // Without clamping this would have been {3, 3, insertion: true},
+      // pointing one line past the buffer's last real line.
+      { startLine: 2, endLine: 2, insertion: true },
+    ]);
+  });
+
+  it('drops an end-of-file insertion entirely when ours is empty', () => {
+    const content = [
+      '<<<<<<< ours',
+      '||||||| base',
+      '=======',
+      'C-theirs',
+      '>>>>>>> theirs',
+      '',
+    ].join('\n');
+    expect(parseConflictMarkers(content)).toEqual([]);
+  });
 });

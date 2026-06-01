@@ -104,5 +104,28 @@ export function parseConflictMarkers(content: string): ConflictRange[] {
     }
     // `base` and `theirs` sections do not advance ours' coordinates.
   }
-  return ranges;
+
+  // `oursLine - 1` is the total ours-side line count we observed while
+  // walking. An insertion-style conflict at end-of-file has
+  // `conflictStart = oursLine`, i.e. one past the last real ours line,
+  // which would otherwise point the highlight at a buffer line that
+  // does not exist. Clamp such anchors onto the actual last ours line
+  // so the strong color paints somewhere meaningful; if the buffer is
+  // empty we drop the range entirely since there is nothing to anchor on.
+  const totalOursLines = oursLine - 1;
+  if (ranges.length === 0) return ranges;
+  const clamped: ConflictRange[] = [];
+  for (const r of ranges) {
+    if (r.insertion && r.startLine > totalOursLines) {
+      if (totalOursLines <= 0) continue;
+      clamped.push({
+        startLine: totalOursLines,
+        endLine: totalOursLines,
+        insertion: true,
+      });
+    } else {
+      clamped.push(r);
+    }
+  }
+  return clamped;
 }
