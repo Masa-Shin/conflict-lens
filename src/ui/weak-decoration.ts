@@ -112,28 +112,50 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     const { editor, relativeFilePath, inputs } = request;
     const document = editor.document;
     const startVersion = document.version;
+    const ranges = await this.computeRanges(relativeFilePath, inputs, document);
+    if (this.disposed) return;
+    if (document.isClosed || document.version !== startVersion) return;
+    this.applyRanges(editor, ranges);
+  }
+
+  /**
+   * Cache-aware compute. Does not touch the editor. Allows the
+   * orchestrator to await both weak and strong ranges before deciding
+   * how to render them (the strong-over-weak suppression policy is
+   * applied in the caller).
+   *
+   * Returns `[]` when the underlying compute is cancelled or fails in
+   * a way the coordinator wants to swallow; the orchestrator then
+   * applies an empty range.
+   */
+  async computeRanges(
+    relativeFilePath: string,
+    inputs: WeakHighlightInputs,
+    document: vscode.TextDocument,
+  ): Promise<WeakHighlightRange[]> {
+    const startVersion = document.version;
     const cacheKey = cacheKeyFor(relativeFilePath, inputs, startVersion);
 
     const cached = this.cache.get(cacheKey);
-    if (cached) {
-      this.apply(editor, cached);
-      return;
-    }
+    if (cached) return cached;
 
     let entry = this.inflight.get(cacheKey);
     if (!entry) {
       entry = this.startCompute(cacheKey, inputs, relativeFilePath, document, startVersion);
     }
-
-    let ranges: WeakHighlightRange[];
     try {
-      ranges = await entry.promise;
+      return await entry.promise;
     } catch (err) {
-      if (entry.controller.signal.aborted || this.disposed) return;
+      if (entry.controller.signal.aborted || this.disposed) return [];
       throw err;
     }
-    if (entry.controller.signal.aborted || this.disposed) return;
-    if (document.isClosed || document.version !== startVersion) return;
+  }
+
+  /**
+   * Apply pre-computed ranges. Idempotent — calling with `[]` clears
+   * the editor's weak decorations.
+   */
+  applyRanges(editor: vscode.TextEditor, ranges: WeakHighlightRange[]): void {
     this.apply(editor, ranges);
   }
 

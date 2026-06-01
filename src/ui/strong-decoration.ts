@@ -72,28 +72,37 @@ export class StrongDecorationCoordinator implements vscode.Disposable {
     const { editor, relativeFilePath, inputs } = request;
     const document = editor.document;
     const startVersion = document.version;
+    const ranges = await this.computeRanges(relativeFilePath, inputs, document);
+    if (this.disposed) return;
+    if (document.isClosed || document.version !== startVersion) return;
+    this.applyRanges(editor, ranges);
+  }
+
+  /** See `WeakDecorationCoordinator.computeRanges` for semantics. */
+  async computeRanges(
+    relativeFilePath: string,
+    inputs: StrongHighlightInputs,
+    document: vscode.TextDocument,
+  ): Promise<StrongHighlightRange[]> {
+    const startVersion = document.version;
     const cacheKey = cacheKeyFor(relativeFilePath, inputs, startVersion);
 
     const cached = this.cache.get(cacheKey);
-    if (cached) {
-      this.apply(editor, cached);
-      return;
-    }
+    if (cached) return cached;
 
     let entry = this.inflight.get(cacheKey);
     if (!entry) {
       entry = this.startCompute(cacheKey, inputs, relativeFilePath, document, startVersion);
     }
-
-    let ranges: StrongHighlightRange[];
     try {
-      ranges = await entry.promise;
+      return await entry.promise;
     } catch (err) {
-      if (entry.controller.signal.aborted || this.disposed) return;
+      if (entry.controller.signal.aborted || this.disposed) return [];
       throw err;
     }
-    if (entry.controller.signal.aborted || this.disposed) return;
-    if (document.isClosed || document.version !== startVersion) return;
+  }
+
+  applyRanges(editor: vscode.TextEditor, ranges: StrongHighlightRange[]): void {
     this.apply(editor, ranges);
   }
 

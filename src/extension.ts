@@ -32,6 +32,7 @@ import {
   type TargetRepositoryResult,
 } from './git/repository';
 import { detectGitState, type GitState } from './git/state';
+import { subtractRanges } from './diff/range-ops';
 import { t } from './l10n';
 import {
   FileDecorationCoordinator,
@@ -683,24 +684,49 @@ async function applyToEditor(
     return;
   }
 
+  // Compute both pipelines in parallel; the orchestrator subtracts the
+  // strong ranges from the weak set so that a line predicted to
+  // conflict is rendered with the strong color only, instead of
+  // stacking the two semi-transparent backgrounds on top of each other.
   const strongInputs: StrongHighlightInputs = inputs;
-  const weakPromise = weakDecorations
-    .update({ editor, relativeFilePath: normalized, inputs })
-    .catch((err) => {
-      runtime?.logChannel.warn(
-        `weakDecorations.update failed for ${normalized}: ${stringifyError(err)}`,
-      );
-    });
-  const strongPromise = strongEnabled
-    ? strongDecorations
-        .update({ editor, relativeFilePath: normalized, inputs: strongInputs })
+  const startVersion = doc.version;
+  let weakRanges, strongRanges;
+  try {
+    [weakRanges, strongRanges] = await Promise.all([
+      weakDecorations
+        .computeRanges(normalized, inputs, doc)
         .catch((err) => {
           runtime?.logChannel.warn(
-            `strongDecorations.update failed for ${normalized}: ${stringifyError(err)}`,
+            `weakDecorations.compute failed for ${normalized}: ${stringifyError(err)}`,
           );
-        })
-    : Promise.resolve(strongDecorations.clear(editor));
-  await Promise.all([weakPromise, strongPromise]);
+          return [];
+        }),
+      strongEnabled
+        ? strongDecorations
+            .computeRanges(normalized, strongInputs, doc)
+            .catch((err) => {
+              runtime?.logChannel.warn(
+                `strongDecorations.compute failed for ${normalized}: ${stringifyError(err)}`,
+              );
+              return [];
+            })
+        : Promise.resolve([]),
+    ]);
+  } catch (err) {
+    runtime?.logChannel.warn(
+      `applyToEditor compute failed for ${normalized}: ${stringifyError(err)}`,
+    );
+    return;
+  }
+  if (doc.isClosed || doc.version !== startVersion) return;
+
+  const suppressedWeak = subtractRanges(weakRanges, strongRanges);
+  weakDecorations.applyRanges(editor, suppressedWeak);
+  if (strongEnabled) {
+    strongDecorations.applyRanges(editor, strongRanges);
+  } else {
+    strongDecorations.clear(editor);
+  }
 }
 
 type NotificationAction = 'select-base-branch';
