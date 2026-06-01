@@ -2,5 +2,13 @@
   "{0}: '{1}' is not implemented yet.": "{0}: '{1}' is not implemented yet.",
   "{0} activated.": "{0} activated.",
   "{0}: (initializing)": "{0}: (initializing)",
-  "{0}: open output channel": "{0}: open output channel"
+  "{0}: open output channel": "{0}: open output channel",
+  "{0}: initialization failed. See output channel.": "{0}: initialization failed. See output channel.",
+  "{0}: built-in Git extension is unavailable. {1}": "{0}: built-in Git extension is unavailable. {1}",
+  "{0}: git executable not found. {1}": "{0}: git executable not found. {1}",
+  "{0}: git {1} is too old. Requires git 2.30 or newer.": "{0}: git {1} is too old. Requires git 2.30 or newer.",
+  "{0}: open a folder to use Conflict Lens.": "{0}: open a folder to use Conflict Lens.",
+  "{0}: workspace is not a git repository.": "{0}: workspace is not a git repository.",
+  "{0}: workspace is a submodule; not supported in MVP.": "{0}: workspace is a submodule; not supported in MVP.",
+  "{0}: timed out waiting for the built-in Git extension.": "{0}: timed out waiting for the built-in Git extension."
 }

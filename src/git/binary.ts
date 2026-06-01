@@ -37,7 +37,12 @@ export const STRONG_HIGHLIGHT_MIN_VERSION: { major: number; minor: number } = {
  */
 export interface VscodeExtensionLike {
   readonly isActive: boolean;
-  activate(): Promise<unknown>;
+  /**
+   * Returns a thenable. Typed as PromiseLike (not Promise) so this interface
+   * is structurally assignable from `vscode.Extension<T>` whose activate()
+   * returns the vscode-specific `Thenable<T>` type.
+   */
+  activate(): PromiseLike<unknown>;
   readonly exports: { getAPI(version: number): VscodeGitApi } | undefined;
 }
 
