@@ -36,6 +36,15 @@ export interface ComputeStrongHighlightsParams {
   readonly oursContent: string;
   readonly readBlob: BlobReader;
   /**
+   * Pre-filter: the set of repo-relative paths that the base branch
+   * has touched since the merge-base. A file outside this set cannot
+   * produce a meaningful conflict (the trial merge would have nothing
+   * to merge from theirs) and is skipped *before* the expensive
+   * tmpfile + merge-file spawn. Pass an empty set to suppress all
+   * strong highlights; pass `undefined` to disable the gate.
+   */
+  readonly baseChangedFiles?: ReadonlySet<string>;
+  /**
    * If the trial merge produces more than this many conflict regions
    * the file is treated as too noisy to highlight precisely; strong
    * highlights are suppressed. `0` or omitted disables the gate.
@@ -70,8 +79,17 @@ export async function computeStrongHighlights(
     relativeFilePath,
     oursContent,
     readBlob,
+    baseChangedFiles,
     signal,
   } = params;
+
+  // Pre-filter: a file the base branch did not touch cannot conflict.
+  // Skipping these here saves the tmpfile + merge-file spawn that
+  // would otherwise run only to return `conflictCount === 0`. Note
+  // we intentionally do NOT filter by merge-tree's conflict set:
+  // that set is computed against committed HEAD, so a file the user
+  // is only modifying in the buffer would be missed.
+  if (baseChangedFiles && !baseChangedFiles.has(relativeFilePath)) return [];
 
   // Use allSettled so a missing blob on one side doesn't reject the
   // other read; either way, missing blobs mean we cannot perform a

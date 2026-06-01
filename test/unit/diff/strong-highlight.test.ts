@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { computeStrongHighlights } from '../../../src/diff/strong-highlight';
 import { createBlobReaderFromRunner } from '../../../src/git/blob';
@@ -146,5 +146,27 @@ describe('computeStrongHighlights (integration)', () => {
       readBlob: createBlobReaderFromRunner(runner, fx.repo),
     });
     expect(ranges).toEqual([]);
+  });
+
+  it('short-circuits when the file is not in baseChangedFiles', async () => {
+    const fx = await makeFixture();
+    teardown.push(fx.repo);
+    const oursContent = fs.readFileSync(path.join(fx.repo, 'file.txt'), 'utf8');
+    const reader = vi.fn(createBlobReaderFromRunner(runner, fx.repo));
+    // file.txt actually does conflict in the fixture, but we tell the
+    // gate that the base did not touch it — the compute should bail
+    // out before reading any blobs.
+    const ranges = await computeStrongHighlights({
+      runner,
+      repoRootPath: fx.repo,
+      baseBranch: fx.baseBranch,
+      mergeBaseSha: fx.mergeBaseSha,
+      relativeFilePath: 'file.txt',
+      oursContent,
+      readBlob: reader,
+      baseChangedFiles: new Set([]),
+    });
+    expect(ranges).toEqual([]);
+    expect(reader).not.toHaveBeenCalled();
   });
 });

@@ -524,6 +524,33 @@ let decorationRefreshTimer: NodeJS.Timeout | undefined;
 const documentRefreshTimers = new Map<string, NodeJS.Timeout>();
 
 /**
+ * Soft cache of the base-side changed-files set keyed by
+ * `(baseBranch, mergeBaseSha)`. Computed lazily via
+ * `listChangedFilesOnBase` and shared across every editor's strong
+ * compute so we do not re-spawn the same `git diff --name-only` per
+ * editor or per keystroke. Invalidated implicitly when the key
+ * changes; explicitly cleared by `Conflict Lens: Refresh`.
+ */
+let cachedBaseChangedFiles:
+  | { readonly key: string; readonly set: ReadonlySet<string> }
+  | undefined;
+
+async function getBaseChangedFiles(
+  runner: GitEnvironment['runner'],
+  repoRootPath: string,
+  baseBranch: string,
+  mergeBaseSha: string,
+): Promise<ReadonlySet<string>> {
+  const key = `${baseBranch}|${mergeBaseSha}`;
+  const cached = cachedBaseChangedFiles;
+  if (cached && cached.key === key) return cached.set;
+  const list = await listChangedFilesOnBase(runner, repoRootPath, baseBranch);
+  const set: ReadonlySet<string> = new Set(list);
+  cachedBaseChangedFiles = { key, set };
+  return set;
+}
+
+/**
  * Coalesce decoration refresh requests. A burst of events
  * (`onDidChangeActiveTextEditor` + `onDidChangeVisibleTextEditors` fired
  * when the user splits the editor) becomes a single recompute.
@@ -598,8 +625,16 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
     largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
   const strongEnabled = isStrongHighlightEnabled();
+  const baseChangedFiles = await getBaseChangedFiles(
+    ctx.environment.runner,
+    ctx.repository.rootPath,
+    ctx.baseBranch,
+    mergeBaseSha,
+  );
 
-  await Promise.all(editors.map((e) => applyToEditor(e, inputs, strongEnabled)));
+  await Promise.all(
+    editors.map((e) => applyToEditor(e, inputs, strongEnabled, baseChangedFiles)),
+  );
 }
 
 async function refreshDecorationsNow(): Promise<void> {
@@ -645,8 +680,17 @@ async function refreshDecorationsNow(): Promise<void> {
   };
   const strongEnabled = isStrongHighlightEnabled();
 
+  const baseChangedFiles = await getBaseChangedFiles(
+    inputs.runner,
+    inputs.repoRootPath,
+    inputs.baseBranch,
+    mergeBaseSha,
+  );
+
   await Promise.all([
-    ...editors.map((editor) => applyToEditor(editor, inputs, strongEnabled)),
+    ...editors.map((editor) =>
+      applyToEditor(editor, inputs, strongEnabled, baseChangedFiles),
+    ),
     fileDecorations
       .refresh(
         {
@@ -675,6 +719,7 @@ async function applyToEditor(
   editor: vscode.TextEditor,
   inputs: WeakHighlightInputs,
   strongEnabled: boolean,
+  baseChangedFiles: ReadonlySet<string>,
 ): Promise<void> {
   if (!runtime) return;
   const { weakDecorations, strongDecorations } = runtime;
@@ -706,7 +751,7 @@ async function applyToEditor(
   // strong ranges from the weak set so that a line predicted to
   // conflict is rendered with the strong color only, instead of
   // stacking the two semi-transparent backgrounds on top of each other.
-  const strongInputs: StrongHighlightInputs = inputs;
+  const strongInputs: StrongHighlightInputs = { ...inputs, baseChangedFiles };
   const startVersion = doc.version;
   let weakRanges, strongRanges;
   try {
@@ -1410,6 +1455,7 @@ async function refreshCommand(): Promise<void> {
   runtime.weakDecorations.invalidateAll();
   runtime.strongDecorations.invalidateAll();
   runtime.fileDecorations.clear();
+  cachedBaseChangedFiles = undefined;
   await refreshBaseBranch();
   scheduleDecorationRefresh();
 }

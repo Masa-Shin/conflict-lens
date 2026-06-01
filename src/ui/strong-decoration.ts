@@ -17,11 +17,14 @@ import type {
 } from './weak-decoration';
 
 /**
- * Strong-highlight inputs are structurally identical to weak: both
- * pipelines need a runner, repo root, base branch, merge-base SHA, and
- * a blob reader. Aliasing keeps the call sites uniform.
+ * Strong inputs extend weak with a base-side-changed-files set so the
+ * coordinator can skip the merge-file spawn for files the base branch
+ * has not touched (the trial merge would have nothing to merge from
+ * theirs and would always return `conflictCount === 0`).
  */
-export type StrongHighlightInputs = WeakHighlightInputs;
+export interface StrongHighlightInputs extends WeakHighlightInputs {
+  readonly baseChangedFiles: ReadonlySet<string>;
+}
 
 const CACHE_MAX_BYTES = 16 * 1024 * 1024;
 const CACHE_MAX_ENTRY_BYTES = 4 * 1024 * 1024;
@@ -122,6 +125,7 @@ export class StrongDecorationCoordinator implements vscode.Disposable {
       relativeFilePath,
       oursContent: document.getText(),
       readBlob: inputs.readBlob,
+      baseChangedFiles: inputs.baseChangedFiles,
       largeFileHunkThreshold: inputs.largeFileHunkThreshold,
       signal: controller.signal,
     });

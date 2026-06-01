@@ -40,6 +40,7 @@ function makeInputs(): StrongHighlightInputs {
     baseBranch: 'origin/main',
     mergeBaseSha: 'mb123',
     readBlob: vi.fn(),
+    baseChangedFiles: new Set(['file.txt']),
     largeFileHunkThreshold: 200,
   };
 }
