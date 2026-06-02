@@ -2,7 +2,9 @@ import * as vscode from 'vscode';
 
 import { ByteLruCache } from '../cache/lru';
 import {
-  computeWeakHighlights,
+  applyBaseDiffToBuffer,
+  loadBaseDiff,
+  type BaseDiff,
   type WeakHighlightRange,
 } from '../diff/weak-highlight';
 import type { BlobReader } from '../git/blob';
@@ -46,6 +48,27 @@ export interface WeakDecorationSettings {
 /** Spec §5.4 cache strategy: 16 MiB total / 4 MiB per entry. */
 const CACHE_MAX_BYTES = 16 * 1024 * 1024;
 const CACHE_MAX_ENTRY_BYTES = 4 * 1024 * 1024;
+/**
+ * Separate budget for the base-diff cache. Each entry holds the
+ * merge-base blob plus a small hunk list, so it can be considerably
+ * larger than the range cache's per-entry payload. Kept distinct from
+ * the range cache so eviction policies do not fight each other.
+ */
+const BASE_DIFF_CACHE_MAX_BYTES = 16 * 1024 * 1024;
+const BASE_DIFF_CACHE_MAX_ENTRY_BYTES = 4 * 1024 * 1024;
+
+function sizeOfBaseDiff(entry: BaseDiff): number {
+  return entry.leftContent.length * 2 + entry.hunks.length * 32;
+}
+
+function baseDiffKey(
+  baseBranch: string,
+  mergeBaseSha: string,
+  relativeFilePath: string,
+  largeFileHunkThreshold: number,
+): string {
+  return `${baseBranch}|${mergeBaseSha}|${largeFileHunkThreshold}|${relativeFilePath}`;
+}
 
 export interface UpdateRequest {
   readonly editor: vscode.TextEditor;
@@ -75,6 +98,20 @@ interface InflightEntry {
 export class WeakDecorationCoordinator implements vscode.Disposable {
   private readonly cache: ByteLruCache<string, WeakHighlightRange[]>;
   /**
+   * Cache of base-side work keyed on `(base, mergeBaseSha, threshold,
+   * file)` — none of which move when the user types. A cache hit means
+   * the per-keystroke refresh skips `git diff` and `git show` entirely
+   * and only does the in-memory mapping step.
+   */
+  private readonly baseDiffCache: ByteLruCache<string, BaseDiff>;
+  /**
+   * In-flight `loadBaseDiff` calls keyed the same way as
+   * `baseDiffCache`. Multiple concurrent refreshes for the same file at
+   * the same base/merge-base attach to the existing promise rather than
+   * each spawning their own git process.
+   */
+  private readonly baseDiffInflight = new Map<string, Promise<BaseDiff>>();
+  /**
    * Active computes keyed by cache key. A second request for the same
    * key (e.g. two split editors showing the same document at the same
    * version) attaches to the existing promise instead of spawning a
@@ -93,6 +130,11 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     baseBranchLabel: string,
   ) {
     this.cache = new ByteLruCache(CACHE_MAX_BYTES, CACHE_MAX_ENTRY_BYTES, sizeOfRanges);
+    this.baseDiffCache = new ByteLruCache(
+      BASE_DIFF_CACHE_MAX_BYTES,
+      BASE_DIFF_CACHE_MAX_ENTRY_BYTES,
+      sizeOfBaseDiff,
+    );
     this.settings = initialSettings;
     this.baseBranchLabel = baseBranchLabel;
     this.decorationType = this.buildDecorationType();
@@ -166,17 +208,10 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     startVersion: number,
   ): InflightEntry {
     const controller = new AbortController();
-    const promise = computeWeakHighlights({
-      runner: inputs.runner,
-      repoRootPath: inputs.repoRootPath,
-      baseBranch: inputs.baseBranch,
-      mergeBaseSha: inputs.mergeBaseSha,
-      relativeFilePath,
-      rightContent: document.getText(),
-      readBlob: inputs.readBlob,
-      largeFileHunkThreshold: inputs.largeFileHunkThreshold,
-      signal: controller.signal,
-    });
+    const rightContent = document.getText();
+    const promise = this.getBaseDiff(inputs, relativeFilePath, controller.signal).then(
+      (baseDiff) => applyBaseDiffToBuffer(baseDiff, rightContent),
+    );
     const entry: InflightEntry = { controller, promise };
     this.inflight.set(cacheKey, entry);
 
@@ -200,6 +235,54 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
         }
       });
     return entry;
+  }
+
+  /**
+   * Return the base-side work for this file, hitting the cache when
+   * available. The cache is keyed on values that do not move during
+   * typing, so the per-keystroke path stays free of git spawns once a
+   * file has been seen at the current `(base, mergeBaseSha)`.
+   */
+  private async getBaseDiff(
+    inputs: WeakHighlightInputs,
+    relativeFilePath: string,
+    signal: AbortSignal,
+  ): Promise<BaseDiff> {
+    const key = baseDiffKey(
+      inputs.baseBranch,
+      inputs.mergeBaseSha,
+      relativeFilePath,
+      inputs.largeFileHunkThreshold,
+    );
+    const cached = this.baseDiffCache.get(key);
+    if (cached) return cached;
+    const inflight = this.baseDiffInflight.get(key);
+    if (inflight) return inflight;
+    let promise!: Promise<BaseDiff>;
+    promise = (async () => {
+      try {
+        const baseDiff = await loadBaseDiff({
+          runner: inputs.runner,
+          repoRootPath: inputs.repoRootPath,
+          baseBranch: inputs.baseBranch,
+          mergeBaseSha: inputs.mergeBaseSha,
+          relativeFilePath,
+          readBlob: inputs.readBlob,
+          largeFileHunkThreshold: inputs.largeFileHunkThreshold,
+          signal,
+        });
+        if (!this.disposed && !signal.aborted) {
+          this.baseDiffCache.set(key, baseDiff);
+        }
+        return baseDiff;
+      } finally {
+        if (this.baseDiffInflight.get(key) === promise) {
+          this.baseDiffInflight.delete(key);
+        }
+      }
+    })();
+    this.baseDiffInflight.set(key, promise);
+    return promise;
   }
 
   /** Remove weak highlights from `editor` without touching the cache. */
@@ -232,6 +315,8 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
   /** Drop all cached results — call when baseBranch / merge-base changes. */
   invalidateAll(): void {
     this.cache.clear();
+    this.baseDiffCache.clear();
+    this.baseDiffInflight.clear();
     for (const entry of this.inflight.values()) entry.controller.abort();
     this.inflight.clear();
   }
@@ -242,6 +327,8 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     for (const entry of this.inflight.values()) entry.controller.abort();
     this.inflight.clear();
     this.cache.clear();
+    this.baseDiffCache.clear();
+    this.baseDiffInflight.clear();
   }
 
   /** Diagnostic stats (used by debug logging per spec §5.4 observability). */

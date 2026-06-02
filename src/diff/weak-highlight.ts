@@ -17,13 +17,35 @@ export interface WeakHighlightRange {
   readonly insertion: boolean;
 }
 
-export interface ComputeWeakHighlightsParams {
+/**
+ * Result of the base-side work: the hunk list (in merge-base coordinates)
+ * plus the merge-base blob text. Both are functions of
+ * `(baseBranch, mergeBaseSha, relativeFilePath)` only — completely
+ * independent of the editor buffer — so callers can cache this across
+ * keystrokes and only re-run the buffer-dependent mapping step.
+ *
+ * `suppressed` is `true` when the hunk count exceeded the
+ * largeFileHunkThreshold; callers should treat the file as "too noisy
+ * to highlight" without re-fetching.
+ */
+export interface BaseDiff {
+  readonly hunks: readonly DiffHunk[];
+  readonly leftContent: string;
+  readonly suppressed: boolean;
+}
+
+export interface LoadBaseDiffParams {
   readonly runner: GitRunner;
   readonly repoRootPath: string;
   readonly baseBranch: string;
   readonly mergeBaseSha: string;
-  /** Path relative to repo root. Must already be validated (spec §3.1.3). */
   readonly relativeFilePath: string;
+  readonly readBlob: BlobReader;
+  readonly largeFileHunkThreshold?: number;
+  readonly signal?: AbortSignal;
+}
+
+export interface ComputeWeakHighlightsParams extends LoadBaseDiffParams {
   /**
    * Authoritative right-side content. Callers pass the current editor
    * buffer (`document.getText()`) so that highlights follow user edits in
@@ -32,25 +54,76 @@ export interface ComputeWeakHighlightsParams {
    * caller can read the disk bytes; both routes use this same path.
    */
   readonly rightContent: string;
-  /**
-   * Function to read the merge-base blob. Production should pass a
-   * batch-backed reader (`createBlobReaderFromBatch`) so the read does
-   * not pay a per-call git spawn; tests typically pass the runner-backed
-   * `createBlobReaderFromRunner` for isolation.
-   */
-  readonly readBlob: BlobReader;
-  /**
-   * If the base-side diff produces more than this many hunks the file
-   * is treated as auto-generated noise and weak highlights are
-   * suppressed. `0` or omitted disables the gate.
-   */
-  readonly largeFileHunkThreshold?: number;
-  readonly signal?: AbortSignal;
 }
 
 /**
- * Compute weak-highlight line ranges for the given file, with line
- * numbers aligned to `rightContent` (the editor buffer).
+ * Run the git-side half of the pipeline: fetch the base-side hunk list
+ * and the merge-base blob. Both depend only on
+ * `(baseBranch, mergeBaseSha, relativeFilePath)` and are safe to cache
+ * for the lifetime of those three values — typing in the editor never
+ * invalidates the result.
+ *
+ * Returns `suppressed: true` (with empty `hunks`) when the hunk count
+ * exceeded `largeFileHunkThreshold`. The blob fetch is skipped in that
+ * case since the result is going to be empty anyway.
+ */
+export async function loadBaseDiff(
+  params: LoadBaseDiffParams,
+): Promise<BaseDiff> {
+  const {
+    runner,
+    repoRootPath,
+    baseBranch,
+    mergeBaseSha,
+    relativeFilePath,
+    readBlob,
+    signal,
+  } = params;
+
+  const hunks = await runBaseDiff(
+    runner,
+    repoRootPath,
+    mergeBaseSha,
+    baseBranch,
+    relativeFilePath,
+    { signal },
+  );
+  if (hunks.length === 0) {
+    return { hunks, leftContent: '', suppressed: false };
+  }
+  const threshold = params.largeFileHunkThreshold;
+  if (typeof threshold === 'number' && threshold > 0 && hunks.length > threshold) {
+    return { hunks: [], leftContent: '', suppressed: true };
+  }
+  const leftContent = await readBlob(mergeBaseSha, relativeFilePath, { signal });
+  return { hunks, leftContent, suppressed: false };
+}
+
+/**
+ * Run the buffer-dependent half of the pipeline against a pre-fetched
+ * `BaseDiff`. Pure in-memory work — `buildLineMapping` plus a per-hunk
+ * coordinate translation. Cheap enough to run on every keystroke.
+ */
+export function applyBaseDiffToBuffer(
+  baseDiff: BaseDiff,
+  rightContent: string,
+): WeakHighlightRange[] {
+  if (baseDiff.suppressed || baseDiff.hunks.length === 0) return [];
+  const mapping = buildLineMapping(baseDiff.leftContent, rightContent);
+  const ranges: WeakHighlightRange[] = [];
+  for (const hunk of baseDiff.hunks) {
+    const range = mapHunkToRight(hunk, mapping.toRight, mapping.rightLineCount);
+    if (range) ranges.push(range);
+  }
+  return ranges;
+}
+
+/**
+ * Convenience composition of `loadBaseDiff` + `applyBaseDiffToBuffer`
+ * for callers that do not maintain their own base-diff cache. The
+ * decoration coordinator splits the two halves so that typing only
+ * triggers the in-memory part; tests and one-shot callers can keep
+ * using this one-stop function.
  *
  * Pipeline (spec §3.1.1):
  *   1. base-side diff (hunk headers, merge-base coordinates)
@@ -65,33 +138,8 @@ export interface ComputeWeakHighlightsParams {
 export async function computeWeakHighlights(
   params: ComputeWeakHighlightsParams,
 ): Promise<WeakHighlightRange[]> {
-  const {
-    runner,
-    repoRootPath,
-    baseBranch,
-    mergeBaseSha,
-    relativeFilePath,
-    rightContent,
-    readBlob,
-    signal,
-  } = params;
-
-  const hunks = await runBaseDiff(runner, repoRootPath, baseBranch, relativeFilePath, { signal });
-  if (hunks.length === 0) return [];
-  const threshold = params.largeFileHunkThreshold;
-  if (typeof threshold === 'number' && threshold > 0 && hunks.length > threshold) {
-    return [];
-  }
-
-  const leftContent = await readBlob(mergeBaseSha, relativeFilePath, { signal });
-  const mapping = buildLineMapping(leftContent, rightContent);
-
-  const ranges: WeakHighlightRange[] = [];
-  for (const hunk of hunks) {
-    const range = mapHunkToRight(hunk, mapping.toRight, mapping.rightLineCount);
-    if (range) ranges.push(range);
-  }
-  return ranges;
+  const baseDiff = await loadBaseDiff(params);
+  return applyBaseDiffToBuffer(baseDiff, params.rightContent);
 }
 
 /**

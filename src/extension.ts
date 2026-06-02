@@ -101,6 +101,14 @@ interface LiveContext {
   baseBranch: string | undefined;
   baseBranchSource: BaseBranchSource | undefined;
   /**
+   * Merge-base SHA between HEAD and `baseBranch`, refreshed exactly when
+   * either side can have moved: base resolution, git state change (HEAD
+   * moved), and after a successful base-only fetch. Cached here so the
+   * per-keystroke refresh path can read it instead of spawning
+   * `git merge-base` on every event.
+   */
+  mergeBaseSha: string | undefined;
+  /**
    * Long-lived `git cat-file --batch` for blob reads. Created once per
    * activation on the resolved git binary and disposed via the extension
    * context. Wrapped in `readBlob` and reused for every refresh.
@@ -239,6 +247,7 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
     gitState: initialGitState,
     baseBranch: undefined,
     baseBranchSource: undefined,
+    mergeBaseSha: undefined,
     catFileBatch,
     readBlob,
   };
@@ -249,15 +258,23 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
   const reevaluateState = debounce(async () => {
     try {
       const next = await safeDetectGitState(environment, repoResult.repository);
+      let stateChanged = false;
       setState((prev) => {
         if (prev.kind !== 'live') return prev;
         if (gitStatesEqual(prev.context.gitState, next)) return prev;
         runtime?.logChannel.info(
           `Git state changed: ${prev.context.gitState.kind} → ${next.kind}.`,
         );
+        stateChanged = true;
         return { kind: 'live', context: { ...prev.context, gitState: next } };
       });
-      // HEAD may have moved (commit, checkout). Re-run weak highlights too.
+      // HEAD may have moved (commit, checkout). Re-resolve the merge-base
+      // so cached values used during typing reflect the new HEAD, then
+      // run weak highlights.
+      if (stateChanged) {
+        runtime?.weakDecorations.invalidateAll();
+        await refreshMergeBase();
+      }
       scheduleDecorationRefresh();
     } catch (err) {
       runtime?.logChannel.warn(`State re-evaluation failed: ${stringifyError(err)}`);
@@ -325,6 +342,7 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
     }),
     vscode.workspace.onDidCloseTextDocument((doc) => {
       cancelDocumentRefresh(doc);
+      repoRelativePathCache.delete(doc.uri.toString());
     }),
     // Window-focus listener: when the user returns to VS Code we run a
     // remote check too (subject to throttling). The interval timer
@@ -339,6 +357,38 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
 
   // Initial pass for any editors already open at activation.
   scheduleDecorationRefresh();
+}
+
+/**
+ * Resolve the merge-base SHA against the current base branch and stash
+ * it in the live context. Called whenever HEAD or the base branch can
+ * have moved (base resolution, git state change, base-only fetch).
+ * Keeping the value here lets the per-keystroke refresh path skip the
+ * `git merge-base` spawn entirely.
+ */
+async function refreshMergeBase(): Promise<void> {
+  if (currentState.kind !== 'live') return;
+  const ctx = currentState.context;
+  if (!ctx.baseBranch) {
+    setState((prev) => {
+      if (prev.kind !== 'live') return prev;
+      if (prev.context.mergeBaseSha === undefined) return prev;
+      return { kind: 'live', context: { ...prev.context, mergeBaseSha: undefined } };
+    });
+    return;
+  }
+  let sha: string | undefined;
+  try {
+    sha = await resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, ctx.baseBranch);
+  } catch (err) {
+    runtime?.logChannel.warn(`resolveMergeBase threw: ${stringifyError(err)}`);
+    sha = undefined;
+  }
+  setState((prev) => {
+    if (prev.kind !== 'live') return prev;
+    if (prev.context.mergeBaseSha === sha) return prev;
+    return { kind: 'live', context: { ...prev.context, mergeBaseSha: sha } };
+  });
 }
 
 async function refreshBaseBranch(): Promise<void> {
@@ -373,9 +423,14 @@ async function refreshBaseBranch(): Promise<void> {
           ...prev.context,
           baseBranch: resolution.baseBranch,
           baseBranchSource: resolution.source,
+          mergeBaseSha: undefined,
         },
       };
     });
+    // Base just changed; drop any cached merge-base derivatives before
+    // resolving the new one.
+    runtime?.weakDecorations.invalidateAll();
+    await refreshMergeBase();
     applyWeakDecorationSettings();
     applyFileDecorationSettings();
     scheduleDecorationRefresh();
@@ -515,6 +570,16 @@ let decorationRefreshTimer: NodeJS.Timeout | undefined;
 const documentRefreshTimers = new Map<string, NodeJS.Timeout>();
 
 /**
+ * Per-document memo of repo-relative path resolution. `applyToEditor` runs
+ * on the typing hot path; without this it would `lstat` + `realpath` the
+ * active file on every keystroke-debounce flush even though the result is
+ * stable for the session. Keyed by document URI; the value is the
+ * normalized repo-relative path, or `null` when the file is outside the
+ * repo / invalid. Entries are dropped when the document closes.
+ */
+const repoRelativePathCache = new Map<string, string | null>();
+
+/**
  * Coalesce decoration refresh requests. A burst of events
  * (`onDidChangeActiveTextEditor` + `onDidChangeVisibleTextEditors` fired
  * when the user splits the editor) becomes a single recompute.
@@ -567,24 +632,21 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
   const ctx = currentState.context;
   if (ctx.gitState.kind !== 'ready' || !ctx.baseBranch) return;
   if (document.isClosed) return;
+  // Without a cached merge-base nothing downstream can produce useful
+  // ranges, but typing is not where we want to spawn `git merge-base`
+  // — base/HEAD events refresh it for us. Skip silently.
+  if (!ctx.mergeBaseSha) return;
 
   const editors = vscode.window.visibleTextEditors.filter(
     (e) => e.document === document,
   );
   if (editors.length === 0) return;
 
-  const mergeBaseSha = await resolveMergeBase(
-    ctx.environment.runner,
-    ctx.repository.rootPath,
-    ctx.baseBranch,
-  );
-  if (!mergeBaseSha) return;
-
   const inputs: WeakHighlightInputs = {
     runner: ctx.environment.runner,
     repoRootPath: ctx.repository.rootPath,
     baseBranch: ctx.baseBranch,
-    mergeBaseSha,
+    mergeBaseSha: ctx.mergeBaseSha,
     readBlob: ctx.readBlob,
     largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
@@ -631,16 +693,11 @@ async function refreshDecorationsNow(): Promise<void> {
     clearAll();
     return;
   }
-
-  const mergeBaseSha = await resolveMergeBase(
-    ctx.environment.runner,
-    ctx.repository.rootPath,
-    ctx.baseBranch,
-  );
-  if (!mergeBaseSha) {
+  if (!ctx.mergeBaseSha) {
     clearAll();
     return;
   }
+  const mergeBaseSha = ctx.mergeBaseSha;
 
   const inputs: WeakHighlightInputs = {
     runner: ctx.environment.runner,
@@ -716,23 +773,47 @@ async function applyToEditor(
     weakDecorations.clear(editor);
     return false;
   }
-  const within = await isFileWithinRepository(doc.uri.fsPath, inputs.repoRootPath);
-  if (!within) {
-    weakDecorations.clear(editor);
-    return false;
-  }
-  // path.relative may yield "" for the repo root itself or platform-specific
-  // separators on Windows. Git expects forward slashes for path arguments;
-  // we normalize so that the cache key and the git command line agree on
-  // the same string.
-  const relative = path.relative(inputs.repoRootPath, doc.uri.fsPath);
-  const normalized = relative.split(path.sep).join('/');
-  if (normalized === '' || normalized.startsWith('..')) {
+  const normalized = await resolveRepoRelativePath(doc, inputs.repoRootPath);
+  if (normalized === undefined) {
     weakDecorations.clear(editor);
     return false;
   }
 
   return weakDecorations.update({ editor, relativeFilePath: normalized, inputs });
+}
+
+/**
+ * Resolve `doc` to its normalized repo-relative path (forward slashes, as
+ * git and the cache key expect), or `undefined` when the file is outside
+ * the repo or otherwise ineligible. Memoized per document URI because the
+ * underlying `lstat` + `realpath` sit on the typing hot path; the mapping
+ * is stable for the session and the entry is cleared on document close.
+ */
+async function resolveRepoRelativePath(
+  doc: vscode.TextDocument,
+  repoRootPath: string,
+): Promise<string | undefined> {
+  const key = doc.uri.toString();
+  const cached = repoRelativePathCache.get(key);
+  if (cached !== undefined) return cached ?? undefined;
+
+  const within = await isFileWithinRepository(doc.uri.fsPath, repoRootPath);
+  if (!within) {
+    repoRelativePathCache.set(key, null);
+    return undefined;
+  }
+  // path.relative may yield "" for the repo root itself or platform-specific
+  // separators on Windows. Git expects forward slashes for path arguments;
+  // we normalize so that the cache key and the git command line agree on
+  // the same string.
+  const relative = path.relative(repoRootPath, doc.uri.fsPath);
+  const normalized = relative.split(path.sep).join('/');
+  if (normalized === '' || normalized.startsWith('..')) {
+    repoRelativePathCache.set(key, null);
+    return undefined;
+  }
+  repoRelativePathCache.set(key, normalized);
+  return normalized;
 }
 
 type NotificationAction = 'select-base-branch';
@@ -915,6 +996,10 @@ async function handleRemoteBehind(
   const ok = await tryFetchBaseOnly(ctx, baseBranch);
   if (ok) {
     lastNotifiedRemoteSha = undefined;
+    // The base tip just moved, so the merge-base might have shifted and
+    // every cached base-diff is now potentially stale.
+    runtime?.weakDecorations.invalidateAll();
+    await refreshMergeBase();
     scheduleDecorationRefresh();
   }
 }
@@ -1508,11 +1593,16 @@ async function openConflictView(
   doc: vscode.TextDocument,
   relativeFilePath: string,
 ): Promise<void> {
-  const mergeBaseSha = await resolveMergeBase(
-    ctx.environment.runner,
-    ctx.repository.rootPath,
-    baseBranch,
-  );
+  // Prefer the cached merge-base maintained by the live context; fall
+  // back to a fresh resolution only when it is missing (initial open
+  // before the first event populated it).
+  const mergeBaseSha =
+    ctx.mergeBaseSha ??
+    (await resolveMergeBase(
+      ctx.environment.runner,
+      ctx.repository.rootPath,
+      baseBranch,
+    ));
   if (!mergeBaseSha) {
     void vscode.window.showInformationMessage(
       t('{0}: cannot determine merge-base with {1}.', EXTENSION_NAME, baseBranch),
@@ -1683,6 +1773,7 @@ export function deactivate(): void {
   decorationRefreshPending = false;
   for (const timer of documentRefreshTimers.values()) clearTimeout(timer);
   documentRefreshTimers.clear();
+  repoRelativePathCache.clear();
   stopRemoteCheckTimer();
   lastNotifiedRemoteSha = undefined;
   runtime = undefined;

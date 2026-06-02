@@ -2,18 +2,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../src/diff/weak-highlight', () => {
   return {
-    computeWeakHighlights: vi.fn(),
+    loadBaseDiff: vi.fn(),
+    applyBaseDiffToBuffer: vi.fn(),
   };
 });
 
-import { computeWeakHighlights } from '../../../src/diff/weak-highlight';
+import {
+  applyBaseDiffToBuffer,
+  loadBaseDiff,
+  type BaseDiff,
+} from '../../../src/diff/weak-highlight';
 import { Uri, TextEditorDecorationType } from '../../__mocks__/vscode';
 import {
   WeakDecorationCoordinator,
   type WeakHighlightInputs,
 } from '../../../src/ui/weak-decoration';
 
-const mockedCompute = vi.mocked(computeWeakHighlights);
+const mockedLoad = vi.mocked(loadBaseDiff);
+const mockedApply = vi.mocked(applyBaseDiffToBuffer);
+
+const STUB_BASE_DIFF: BaseDiff = {
+  hunks: [],
+  leftContent: '',
+  suppressed: false,
+};
 
 interface FakeDocument {
   version: number;
@@ -68,7 +80,11 @@ describe('WeakDecorationCoordinator', () => {
       { showOverviewRuler: true },
       'origin/main',
     );
-    mockedCompute.mockReset();
+    mockedLoad.mockReset();
+    mockedApply.mockReset();
+    // Default: load returns the stub immediately; tests can override.
+    mockedLoad.mockResolvedValue(STUB_BASE_DIFF);
+    mockedApply.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -76,7 +92,7 @@ describe('WeakDecorationCoordinator', () => {
   });
 
   it('applies the computed ranges as whole-line decorations', async () => {
-    mockedCompute.mockResolvedValueOnce([
+    mockedApply.mockReturnValueOnce([
       { startLine: 2, endLine: 2, insertion: false },
     ]);
     const editor = fakeEditor();
@@ -94,8 +110,8 @@ describe('WeakDecorationCoordinator', () => {
     expect(opt.range.end.line).toBe(1);
   });
 
-  it('skips compute on the second update when inputs and version match', async () => {
-    mockedCompute.mockResolvedValueOnce([
+  it('skips the git-side load on a same-input re-update; only the buffer-side mapping re-runs', async () => {
+    mockedApply.mockReturnValueOnce([
       { startLine: 1, endLine: 1, insertion: false },
     ]);
     const editor = fakeEditor();
@@ -105,27 +121,52 @@ describe('WeakDecorationCoordinator', () => {
       relativeFilePath: 'file.txt',
       inputs,
     });
-    expect(mockedCompute).toHaveBeenCalledTimes(1);
+    expect(mockedLoad).toHaveBeenCalledTimes(1);
 
-    // Same editor (same version), same inputs → cache hit, no recompute.
+    // Same editor (same version), same inputs → range cache hit.
     await coord.update({
       editor: editor as never,
       relativeFilePath: 'file.txt',
       inputs,
     });
-    expect(mockedCompute).toHaveBeenCalledTimes(1);
-    // Decoration was applied twice — once per call.
+    expect(mockedLoad).toHaveBeenCalledTimes(1);
     expect(editor._calls).toHaveLength(2);
   });
 
+  it('reuses the cached base-diff on a new buffer version (no git spawn, mapping re-runs)', async () => {
+    mockedApply.mockReturnValue([{ startLine: 1, endLine: 1, insertion: false }]);
+    const editor = fakeEditor('a\nb\nc\n', 1);
+    const inputs = makeInputs();
+    await coord.update({
+      editor: editor as never,
+      relativeFilePath: 'file.txt',
+      inputs,
+    });
+    expect(mockedLoad).toHaveBeenCalledTimes(1);
+
+    // Buffer moved on (simulating a keystroke). Range cache misses but
+    // base-diff cache hits → loadBaseDiff is NOT called again.
+    editor.document.version = 2;
+    await coord.update({
+      editor: editor as never,
+      relativeFilePath: 'file.txt',
+      inputs,
+    });
+    expect(mockedLoad).toHaveBeenCalledTimes(1);
+    expect(mockedApply).toHaveBeenCalledTimes(2);
+  });
+
   it('discards stale results when document.version moves during compute', async () => {
-    let resolveCompute!: (r: Array<{ startLine: number; endLine: number; insertion: boolean }>) => void;
-    mockedCompute.mockImplementationOnce(
+    let resolveLoad!: (b: BaseDiff) => void;
+    mockedLoad.mockImplementationOnce(
       () =>
-        new Promise((resolve) => {
-          resolveCompute = resolve as never;
+        new Promise<BaseDiff>((resolve) => {
+          resolveLoad = resolve;
         }),
     );
+    mockedApply.mockReturnValueOnce([
+      { startLine: 1, endLine: 2, insertion: false },
+    ]);
     const editor = fakeEditor('a\nb\nc\n', 5);
     const updatePromise = coord.update({
       editor: editor as never,
@@ -134,7 +175,7 @@ describe('WeakDecorationCoordinator', () => {
     });
     // Buffer moves on while compute is in flight.
     editor.document.version = 6;
-    resolveCompute([{ startLine: 1, endLine: 2, insertion: false }]);
+    resolveLoad(STUB_BASE_DIFF);
     await updatePromise;
     // No decoration applied because the version-check at apply-time
     // detected the stale result.
@@ -142,13 +183,16 @@ describe('WeakDecorationCoordinator', () => {
   });
 
   it('coalesces two parallel requests for the same cache key into one compute', async () => {
-    let resolveCompute!: (r: Array<{ startLine: number; endLine: number; insertion: boolean }>) => void;
-    mockedCompute.mockImplementationOnce(
+    let resolveLoad!: (b: BaseDiff) => void;
+    mockedLoad.mockImplementationOnce(
       () =>
-        new Promise((resolve) => {
-          resolveCompute = resolve as never;
+        new Promise<BaseDiff>((resolve) => {
+          resolveLoad = resolve;
         }),
     );
+    mockedApply.mockReturnValue([
+      { startLine: 1, endLine: 1, insertion: false },
+    ]);
     const editor = fakeEditor();
     const inputs = makeInputs();
     const p1 = coord.update({
@@ -161,11 +205,10 @@ describe('WeakDecorationCoordinator', () => {
       relativeFilePath: 'file.txt',
       inputs,
     });
-    expect(mockedCompute).toHaveBeenCalledTimes(1);
-    resolveCompute([{ startLine: 1, endLine: 1, insertion: false }]);
+    expect(mockedLoad).toHaveBeenCalledTimes(1);
+    resolveLoad(STUB_BASE_DIFF);
     await Promise.all([p1, p2]);
-    // Both calls apply (each to the same editor) but compute ran once.
-    expect(mockedCompute).toHaveBeenCalledTimes(1);
+    expect(mockedLoad).toHaveBeenCalledTimes(1);
   });
 
   it('refreshVisuals rebuilds the decoration type only when toggles flip', () => {
@@ -199,13 +242,16 @@ describe('WeakDecorationCoordinator', () => {
   });
 
   it('dispose() drops in-flight computes and clears the cache', async () => {
-    let resolveCompute!: (r: Array<{ startLine: number; endLine: number; insertion: boolean }>) => void;
-    mockedCompute.mockImplementationOnce(
+    let resolveLoad!: (b: BaseDiff) => void;
+    mockedLoad.mockImplementationOnce(
       () =>
-        new Promise((resolve) => {
-          resolveCompute = resolve as never;
+        new Promise<BaseDiff>((resolve) => {
+          resolveLoad = resolve;
         }),
     );
+    mockedApply.mockReturnValue([
+      { startLine: 1, endLine: 1, insertion: false },
+    ]);
     const editor = fakeEditor();
     const updatePromise = coord.update({
       editor: editor as never,
@@ -213,7 +259,7 @@ describe('WeakDecorationCoordinator', () => {
       inputs: makeInputs(),
     });
     coord.dispose();
-    resolveCompute([{ startLine: 1, endLine: 1, insertion: false }]);
+    resolveLoad(STUB_BASE_DIFF);
     await updatePromise;
     // No decoration applied — coordinator was disposed mid-flight.
     expect(editor._calls).toHaveLength(0);

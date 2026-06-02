@@ -35,8 +35,13 @@ import type { GitRunner } from './runner';
  * merge-base coordinates; conversion to HEAD coordinates is the caller's
  * responsibility (see src/diff/mapping.ts).
  *
+ * The caller passes the already-resolved `mergeBaseSha` instead of letting
+ * git recompute it via `--merge-base HEAD <base>` on every call — for a
+ * hot path like the per-keystroke decoration refresh, that internal
+ * resolution is pure waste.
+ *
  * Flags:
- *  - `--merge-base HEAD <baseBranch>`: diff from merge-base(HEAD, base) to base.
+ *  - `<mergeBaseSha> <baseBranch>`: diff from merge-base to base.
  *  - `--unified=0`: drop context lines so the hunk headers contain pure
  *    change ranges.
  *  - `--no-ext-diff` / `--no-textconv`: refuse to execute user-defined
@@ -50,6 +55,7 @@ import type { GitRunner } from './runner';
 export async function runBaseDiff(
   runner: GitRunner,
   repoRootPath: string,
+  mergeBaseSha: string,
   baseBranch: string,
   relativeFilePath: string,
   options: { signal?: AbortSignal } = {},
@@ -57,14 +63,13 @@ export async function runBaseDiff(
   const result = await runner.run(
     [
       'diff',
-      '--merge-base',
       '--unified=0',
       '--no-ext-diff',
       '--no-textconv',
       '--no-color',
       '-M',
       '--end-of-options',
-      'HEAD',
+      mergeBaseSha,
       baseBranch,
       '--',
       relativeFilePath,
