@@ -377,15 +377,21 @@ async function refreshMergeBase(): Promise<void> {
     });
     return;
   }
+  const resolvedFor = ctx.baseBranch;
   let sha: string | undefined;
   try {
-    sha = await resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, ctx.baseBranch);
+    sha = await resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, resolvedFor);
   } catch (err) {
     runtime?.logChannel.warn(`resolveMergeBase threw: ${stringifyError(err)}`);
     sha = undefined;
   }
   setState((prev) => {
     if (prev.kind !== 'live') return prev;
+    // The base may have been switched out from under us during the await
+    // (e.g. settings change firing `refreshBaseBranch` concurrently).
+    // Writing this sha into the new base's slot would leave a stale
+    // value sitting around until the next merge-base-moving event.
+    if (prev.context.baseBranch !== resolvedFor) return prev;
     if (prev.context.mergeBaseSha === sha) return prev;
     return { kind: 'live', context: { ...prev.context, mergeBaseSha: sha } };
   });
