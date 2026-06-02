@@ -1,8 +1,12 @@
 # Conflict Lens
 
-ソースコード上でコンフリクトしそうな箇所を自動検知する VS Code 拡張
+[![VS Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/Masa-Shin.conflict-lens)](https://marketplace.visualstudio.com/items?itemName=Masa-Shin.conflict-lens)
+[![CI](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-リモートのベースブランチを定期チェックし、現在開いているファイルが変更されていたら該当行をハイライトします。
+ソースコード上でコンフリクトしそうな箇所をハイライトする VS Code 拡張
+
+リモートのベースブランチを定期チェックし、現在開いているファイルがベースブランチで変更されていたら該当行をハイライトします。
 
 << ここに画像を入れる >>
 
@@ -28,7 +32,7 @@
 
 ### ベースブランチにおける修正の可視化
 
-リモートのベースブランチを定期チェックし、リモートで変更が入った行があればエディタ上で黄色にハイライトします。
+リモートのベースブランチを定期チェックし、リモートで変更が入った行があればエディタ上でハイライトします。
 
 << 画像 >>
 
@@ -174,6 +178,26 @@ npm run build   # esbuild
 ```
 
 `F5` で Extension Development Host を起動して動作確認できます。
+
+動作確認のために特定のフォルダを開いた状態で起動したい場合は、リポジトリの `.vscode/launch.json` を書き換えないでください。個人環境の絶対パスが共有設定に混ざってしまいます。代わりに、自分のユーザー設定（コマンドパレットの「Preferences: Open User Settings (JSON)」）に `launch` を追加すると、コミットされない個人用の起動構成になります。
+
+```jsonc
+"launch": {
+  "configurations": [
+    {
+      "name": "Run Extension (テスト対象を指定)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "/path/to/your/test-repo"
+      ],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "npm: build"
+    }
+  ]
+}
+```
 
 ## プライバシー
 
