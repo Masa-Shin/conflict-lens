@@ -163,6 +163,35 @@ describe('GitCatFileBatch (integration)', () => {
     expect(result.content.length).toBe(200_000);
   });
 
+  it('rejects an over-cap blob as too-large and stays in sync afterward', async () => {
+    // big.txt is 200_000 bytes; cap well below it.
+    const capped = new GitCatFileBatch({
+      gitPath: 'git',
+      cwd: fx.repo,
+      maxBlobBytes: 1000,
+    });
+    try {
+      const tooBig = await capped.read('HEAD:big.txt');
+      expect(tooBig.kind).toBe('too-large');
+      if (tooBig.kind === 'too-large') expect(tooBig.size).toBe(200_000);
+
+      // The oversized body must have been drained, not buffered: the very
+      // next read has to parse cleanly rather than mistaking leftover body
+      // bytes for a header.
+      const next = await capped.read('HEAD:file.txt');
+      expect(next.kind).toBe('ok');
+      if (next.kind === 'ok') {
+        expect(next.content.toString('utf8')).toBe('hello\nworld\n');
+      }
+
+      // A small blob under the cap still reads normally.
+      const small = await capped.read('HEAD:dir with space/foo.txt');
+      expect(small.kind).toBe('ok');
+    } finally {
+      capped.dispose();
+    }
+  });
+
   it('handles a path that contains spaces', async () => {
     const result = await batch.read('HEAD:dir with space/foo.txt');
     expect(result.kind).toBe('ok');

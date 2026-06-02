@@ -39,11 +39,11 @@ describe('FileDecorationCoordinator', () => {
     await coord.refresh(makeInputs());
 
     const decoA = coord.provideFileDecoration(Uri.file('/tmp/repo/a.txt'));
-    expect(decoA?.badge).toBe('Δ');
+    expect(decoA?.badge).toBe('≠');
     expect(decoA?.color?.id).toBe('conflictLens.changedFileForeground');
 
     const decoB = coord.provideFileDecoration(Uri.file('/tmp/repo/b.txt'));
-    expect(decoB?.badge).toBe('Δ');
+    expect(decoB?.badge).toBe('≠');
 
     const decoC = coord.provideFileDecoration(Uri.file('/tmp/repo/c.txt'));
     expect(decoC).toBeUndefined();
@@ -54,7 +54,7 @@ describe('FileDecorationCoordinator', () => {
     listChanged.mockResolvedValueOnce(['a.txt']);
     await coord.refresh(makeInputs());
     const deco = coord.provideFileDecoration(Uri.file('/tmp/repo/a.txt'));
-    expect(deco?.badge).toBe('Δ');
+    expect(deco?.badge).toBe('≠');
     expect(deco?.color).toBeUndefined();
   });
 

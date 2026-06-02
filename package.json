@@ -5,6 +5,14 @@
   "version": "0.0.1",
   "publisher": "Masa-Shin",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Masa-Shin/conflict-lens.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Masa-Shin/conflict-lens/issues"
+  },
+  "homepage": "https://github.com/Masa-Shin/conflict-lens#readme",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -174,7 +182,7 @@
   },
   "scripts": {
     "build": "node esbuild.config.mjs",
-    "build:prod": "node esbuild.config.mjs --production",
+    "build:prod": "npm run typecheck && node esbuild.config.mjs --production",
     "watch": "node esbuild.config.mjs --watch",
     "typecheck": "tsc --noEmit -p ./",
     "test": "vitest run",

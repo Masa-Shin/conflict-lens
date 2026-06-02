@@ -9,12 +9,29 @@ export interface GitCatFileBatchOptions {
   readonly gitPath: string;
   /** Repository working tree, used as the child's cwd. */
   readonly cwd: string;
+  /**
+   * Reject any object whose body exceeds this many bytes. The header line
+   * carries the size up front, so an over-cap object is drained off the
+   * pipe (to keep the protocol in sync) without ever being buffered, and
+   * reported as `too-large`. Defaults to {@link DEFAULT_MAX_BLOB_BYTES}.
+   * Without this a single huge tracked blob (a checked-in bundle, a large
+   * generated file) would be loaded whole into the extension-host heap.
+   */
+  readonly maxBlobBytes?: number;
 }
+
+/**
+ * Default per-object body cap. Mirrors the one-shot runner's
+ * `DEFAULT_MAX_BUFFER_BYTES` so the batch path is bounded the same way the
+ * spawn-per-call path already is.
+ */
+export const DEFAULT_MAX_BLOB_BYTES = 64 * 1024 * 1024; // 64 MiB
 
 export type CatFileBatchResult =
   | { readonly kind: 'ok'; readonly sha: string; readonly type: string; readonly content: Buffer }
   | { readonly kind: 'missing' }
-  | { readonly kind: 'ambiguous' };
+  | { readonly kind: 'ambiguous' }
+  | { readonly kind: 'too-large'; readonly size: number };
 
 interface PendingRequest {
   readonly spec: string;
@@ -24,7 +41,13 @@ interface PendingRequest {
 
 type ReaderState =
   | { readonly kind: 'header' }
-  | { readonly kind: 'body'; readonly sha: string; readonly type: string; readonly size: number };
+  | { readonly kind: 'body'; readonly sha: string; readonly type: string; readonly size: number }
+  /**
+   * Draining an over-cap object: discard `remaining` bytes (body + trailing
+   * LF) without buffering them, then resolve the current request as
+   * `too-large`.
+   */
+  | { readonly kind: 'skip'; readonly remaining: number; readonly size: number };
 
 /**
  * Persistent `git cat-file --batch` child process.
@@ -57,8 +80,15 @@ export class GitCatFileBatch {
   private state: ReaderState = { kind: 'header' };
   private buffer: Buffer = Buffer.alloc(0);
   private disposed = false;
+  private readonly maxBlobBytes: number;
 
-  constructor(private readonly options: GitCatFileBatchOptions) {}
+  constructor(private readonly options: GitCatFileBatchOptions) {
+    const cap = options.maxBlobBytes;
+    this.maxBlobBytes =
+      typeof cap === 'number' && Number.isFinite(cap) && cap > 0
+        ? cap
+        : DEFAULT_MAX_BLOB_BYTES;
+  }
 
   /**
    * Look up an object by spec (`<sha>`, `<ref>:<path>`, etc.). Specs
@@ -187,6 +217,12 @@ export class GitCatFileBatch {
         this.failCurrent(new Error(`cat-file: malformed header "${line}"`));
         return true;
       }
+      if (parsed.size > this.maxBlobBytes) {
+        // Too big to hold. Switch to draining the body (content + trailing
+        // LF) so the next response stays aligned, without ever buffering it.
+        this.state = { kind: 'skip', remaining: parsed.size + 1, size: parsed.size };
+        return true;
+      }
       this.state = {
         kind: 'body',
         sha: parsed.sha,
@@ -195,6 +231,22 @@ export class GitCatFileBatch {
       };
       return true;
     }
+
+    if (this.state.kind === 'skip') {
+      if (this.buffer.length === 0) return false;
+      const take = Math.min(this.state.remaining, this.buffer.length);
+      this.buffer = this.buffer.subarray(take);
+      const remaining = this.state.remaining - take;
+      if (remaining > 0) {
+        this.state = { kind: 'skip', remaining, size: this.state.size };
+        return false; // wait for the rest of the oversized body
+      }
+      const size = this.state.size;
+      this.state = { kind: 'header' };
+      this.completeCurrent({ kind: 'too-large', size });
+      return true;
+    }
+
     // body
     const needed = this.state.size + 1; // content + trailing LF
     if (this.buffer.length < needed) return false;
@@ -257,6 +309,11 @@ export function createBlobReaderFromBatch(batch: GitCatFileBatch): BlobReader {
     if (result.kind === 'ok') return result.content.toString('utf8');
     if (result.kind === 'missing') {
       throw new Error(`git cat-file --batch: ${spec} not found`);
+    }
+    if (result.kind === 'too-large') {
+      throw new Error(
+        `git cat-file --batch: ${spec} is too large (${result.size} bytes)`,
+      );
     }
     throw new Error(`git cat-file --batch: ${spec} is ambiguous`);
   };
