@@ -188,7 +188,6 @@
     "vscode:prepublish": "npm run build:prod"
   },
   "devDependencies": {
-    "@types/diff": "^7.0.2",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.74.0",
     "esbuild": "^0.28.0",
