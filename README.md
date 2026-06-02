@@ -115,7 +115,6 @@
 | `conflictLens.baseBranch` | `origin/main` | string | 比較対象。空で自動検出 |
 | `conflictLens.remoteName` | `origin` | string | 自動検出で使うリモート名 |
 | `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーにハイライト位置を表示するか |
-| `conflictLens.showGutterIcon` | `false` | bool | 行番号横にアイコンを表示するか |
 | `conflictLens.showFileDecorationColors` | `false` | bool | Explorer 上でファイル名を色付けするか |
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | リモート更新検知の間隔（分）。`0` で無効 |

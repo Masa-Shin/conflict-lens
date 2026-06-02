@@ -65,8 +65,7 @@ describe('WeakDecorationCoordinator', () => {
 
   beforeEach(() => {
     coord = new WeakDecorationCoordinator(
-      Uri.file('/icon.svg'),
-      { showOverviewRuler: true, showGutterIcon: true },
+      { showOverviewRuler: true },
       'origin/main',
     );
     mockedCompute.mockReset();
@@ -173,7 +172,7 @@ describe('WeakDecorationCoordinator', () => {
     const initial = (coord as unknown as { decorationType: TextEditorDecorationType })
       .decorationType;
     const sameVisuals = coord.refreshVisuals(
-      { showOverviewRuler: true, showGutterIcon: true },
+      { showOverviewRuler: true },
       'origin/main',
     );
     expect(sameVisuals).toBe(false);
@@ -182,7 +181,7 @@ describe('WeakDecorationCoordinator', () => {
     ).toBe(initial);
 
     const changed = coord.refreshVisuals(
-      { showOverviewRuler: false, showGutterIcon: true },
+      { showOverviewRuler: false },
       'origin/main',
     );
     expect(changed).toBe(true);

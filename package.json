@@ -119,12 +119,6 @@
           "scope": "window",
           "description": "%conflictLens.config.showOverviewRuler.description%"
         },
-        "conflictLens.showGutterIcon": {
-          "type": "boolean",
-          "default": false,
-          "scope": "window",
-          "description": "%conflictLens.config.showGutterIcon.description%"
-        },
         "conflictLens.showFileDecorationColors": {
           "type": "boolean",
           "default": false,

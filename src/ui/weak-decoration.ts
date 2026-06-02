@@ -41,7 +41,6 @@ export interface WeakHighlightInputs {
 /** Toggleable visuals. Background color / hover always render. */
 export interface WeakDecorationSettings {
   readonly showOverviewRuler: boolean;
-  readonly showGutterIcon: boolean;
 }
 
 /** Spec §5.4 cache strategy: 16 MiB total / 4 MiB per entry. */
@@ -64,9 +63,9 @@ export interface UpdateRequest {
  *     aborted and any result it produces is discarded.
  *  2. Re-entering an editor that was already computed reads from the LRU
  *     cache and renders synchronously (no spawn).
- *  3. Setting changes that affect visuals (`showGutterIcon`,
- *     `showOverviewRuler`) rebuild the decoration type once; existing
- *     editors must be re-applied externally to pick it up.
+ *  3. Setting changes that affect visuals (`showOverviewRuler`) rebuild
+ *     the decoration type once; existing editors must be re-applied
+ *     externally to pick it up.
  */
 interface InflightEntry {
   readonly controller: AbortController;
@@ -90,7 +89,6 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
   private disposed = false;
 
   constructor(
-    private readonly gutterIconUri: vscode.Uri,
     initialSettings: WeakDecorationSettings,
     baseBranchLabel: string,
   ) {
@@ -209,7 +207,6 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
    */
   refreshVisuals(next: WeakDecorationSettings, baseBranchLabel: string): boolean {
     const visualChanged =
-      next.showGutterIcon !== this.settings.showGutterIcon ||
       next.showOverviewRuler !== this.settings.showOverviewRuler;
     const labelChanged = baseBranchLabel !== this.baseBranchLabel;
     if (!visualChanged && !labelChanged) return false;
@@ -269,10 +266,6 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       isWholeLine: true,
       backgroundColor: new vscode.ThemeColor('conflictLens.changedLineBackground'),
     };
-    if (this.settings.showGutterIcon) {
-      options.gutterIconPath = this.gutterIconUri;
-      options.gutterIconSize = 'contain';
-    }
     if (this.settings.showOverviewRuler) {
       options.overviewRulerColor = new vscode.ThemeColor(
         'conflictLens.changedLineBackground',

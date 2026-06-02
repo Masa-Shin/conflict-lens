@@ -65,7 +65,6 @@ const BASE_BRANCH_SETTING = 'baseBranch';
 const REMOTE_NAME_SETTING = 'remoteName';
 const ENABLED_SETTING = 'enabled';
 const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
-const SHOW_GUTTER_ICON_SETTING = 'showGutterIcon';
 const SHOW_FILE_DECORATION_COLORS_SETTING = 'showFileDecorationColors';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
@@ -125,14 +124,8 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
-  const weakGutterIconUri = vscode.Uri.joinPath(
-    context.extensionUri,
-    'media',
-    'changed-line.svg',
-  );
   const initialSettings = readWeakDecorationSettings();
   const weakDecorations = new WeakDecorationCoordinator(
-    weakGutterIconUri,
     initialSettings,
     '(no base)',
   );
@@ -270,9 +263,9 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       const enabledChanged = event.affectsConfiguration(
         `${CONFIG_NAMESPACE}.${ENABLED_SETTING}`,
       );
-      const visualsChanged =
-        event.affectsConfiguration(`${CONFIG_NAMESPACE}.${SHOW_GUTTER_ICON_SETTING}`) ||
-        event.affectsConfiguration(`${CONFIG_NAMESPACE}.${SHOW_OVERVIEW_RULER_SETTING}`);
+      const visualsChanged = event.affectsConfiguration(
+        `${CONFIG_NAMESPACE}.${SHOW_OVERVIEW_RULER_SETTING}`,
+      );
       const fileDecorationsChanged =
         event.affectsConfiguration(
           `${CONFIG_NAMESPACE}.${SHOW_FILE_DECORATION_COLORS_SETTING}`,
@@ -457,7 +450,6 @@ function readWeakDecorationSettings(): WeakDecorationSettings {
   const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return {
     showOverviewRuler: cfg.get<boolean>(SHOW_OVERVIEW_RULER_SETTING, true),
-    showGutterIcon: cfg.get<boolean>(SHOW_GUTTER_ICON_SETTING, false),
   };
 }
 
