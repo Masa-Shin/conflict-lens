@@ -254,7 +254,6 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       editor.setDecorations(this.decorationType, []);
       return;
     }
-    const hover = this.buildHoverMessage();
     const lineCount = editor.document.lineCount;
     const decorations: vscode.DecorationOptions[] = [];
     for (const range of ranges) {
@@ -262,7 +261,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       const endLine = Math.max(startLine, Math.min(range.endLine - 1, lineCount - 1));
       decorations.push({
         range: new vscode.Range(startLine, 0, endLine, Number.MAX_SAFE_INTEGER),
-        hoverMessage: hover,
+        hoverMessage: this.buildHoverMessage(startLine),
       });
     }
     editor.setDecorations(this.decorationType, decorations);
@@ -282,13 +281,16 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     return vscode.window.createTextEditorDecorationType(options);
   }
 
-  private buildHoverMessage(): vscode.MarkdownString {
+  private buildHoverMessage(startLine: number): vscode.MarkdownString {
     const baseEscaped = escapeMarkdown(this.baseBranchLabel);
     const md = new vscode.MarkdownString(
       t('Changed relative to {0}', baseEscaped),
     );
+    // Pass the hovered hunk's first line (0-based) so the diff editor
+    // can open scrolled to that spot rather than always at file top.
+    const showBaseArgs = encodeURIComponent(JSON.stringify([startLine]));
     md.appendMarkdown(
-      `\n\n[${t('Show base changes')}](command:conflictLens.showBaseChanges)` +
+      `\n\n[${t('Show base changes')}](command:conflictLens.showBaseChanges?${showBaseArgs})` +
         ` · [${t('Preview conflict')}](command:conflictLens.previewConflict)`,
     );
     // Whitelist only our own commands so generic `command:?` URIs cannot

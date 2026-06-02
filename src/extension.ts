@@ -1427,7 +1427,7 @@ async function resolveActiveTarget(): Promise<
  * compared to the user's local buffer. Paired visually with the weak
  * (yellow) highlight, which marks the lines base touched.
  */
-async function showBaseChangesCommand(): Promise<void> {
+async function showBaseChangesCommand(line?: number): Promise<void> {
   const target = await resolveActiveTarget();
   if (!target) return;
   const { ctx, baseBranch, doc, relativeFilePath } = target;
@@ -1459,13 +1459,22 @@ async function showBaseChangesCommand(): Promise<void> {
     query: baseRef,
   });
 
+  // When invoked from a hover, the hovered hunk's first line (0-based)
+  // is passed so the diff editor opens scrolled to that spot. Direct
+  // invocations (command palette, right-click menu) omit the arg and
+  // land at the top of the file as before.
+  const selection =
+    typeof line === 'number' && Number.isFinite(line) && line >= 0
+      ? new vscode.Range(line, 0, line, 0)
+      : undefined;
+
   try {
     await vscode.commands.executeCommand(
       'vscode.diff',
       doc.uri,
       baseUri,
       `${relativeFilePath} ↔ ${baseBranch}`,
-      { preview: true },
+      { preview: true, selection },
     );
   } catch (err) {
     runtime?.logChannel.warn(`vscode.diff failed: ${stringifyError(err)}`);
