@@ -26,7 +26,7 @@ describe('FileDecorationCoordinator', () => {
   let coord: FileDecorationCoordinator;
 
   beforeEach(() => {
-    coord = new FileDecorationCoordinator({ showColors: true, showBadges: true });
+    coord = new FileDecorationCoordinator({ showBadges: true });
     listChanged.mockReset();
   });
 
@@ -40,7 +40,6 @@ describe('FileDecorationCoordinator', () => {
 
     const decoA = coord.provideFileDecoration(Uri.file('/tmp/repo/a.txt'));
     expect(decoA?.badge).toBe('≠');
-    expect(decoA?.color?.id).toBe('conflictLens.changedFileForeground');
 
     const decoB = coord.provideFileDecoration(Uri.file('/tmp/repo/b.txt'));
     expect(decoB?.badge).toBe('≠');
@@ -49,22 +48,12 @@ describe('FileDecorationCoordinator', () => {
     expect(decoC).toBeUndefined();
   });
 
-  it('omits the color when showColors is false', async () => {
-    coord.updateSettings({ showColors: false, showBadges: true }, 'origin/main');
-    listChanged.mockResolvedValueOnce(['a.txt']);
-    await coord.refresh(makeInputs());
-    const deco = coord.provideFileDecoration(Uri.file('/tmp/repo/a.txt'));
-    expect(deco?.badge).toBe('≠');
-    expect(deco?.color).toBeUndefined();
-  });
-
   it('omits the badge when showBadges is false', async () => {
-    coord.updateSettings({ showColors: true, showBadges: false }, 'origin/main');
+    coord.updateSettings({ showBadges: false }, 'origin/main');
     listChanged.mockResolvedValueOnce(['a.txt']);
     await coord.refresh(makeInputs());
     const deco = coord.provideFileDecoration(Uri.file('/tmp/repo/a.txt'));
     expect(deco?.badge).toBeUndefined();
-    expect(deco?.color?.id).toBe('conflictLens.changedFileForeground');
   });
 
   it('returns undefined for URIs outside the repo root', async () => {
@@ -109,7 +98,7 @@ describe('FileDecorationCoordinator', () => {
     await coord.refresh(makeInputs());
     expect(fired).toHaveLength(1);
 
-    coord.updateSettings({ showColors: false, showBadges: true }, 'origin/main');
+    coord.updateSettings({ showBadges: false }, 'origin/main');
     expect(fired).toHaveLength(2);
 
     coord.clear();

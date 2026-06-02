@@ -8,7 +8,6 @@ import { relativeIfWithin } from './file-decoration-helpers';
 export { relativeIfWithin };
 
 export interface FileDecorationSettings {
-  readonly showColors: boolean;
   readonly showBadges: boolean;
 }
 
@@ -120,9 +119,6 @@ export class FileDecorationCoordinator
   private buildChangedDecoration(): vscode.FileDecoration {
     return {
       badge: this.settings.showBadges ? '≠' : undefined,
-      color: this.settings.showColors
-        ? new vscode.ThemeColor('conflictLens.changedFileForeground')
-        : undefined,
       tooltip: t('Conflict Lens: changed by {0}', this.baseBranchLabel),
       propagate: true,
     };

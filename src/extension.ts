@@ -589,7 +589,24 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
     largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
 
-  await Promise.all(editors.map((e) => applyToEditor(e, inputs)));
+  const activeEditor = vscode.window.activeTextEditor;
+  const editorResults = await Promise.all(
+    editors.map((editor) =>
+      applyToEditor(editor, inputs).then((hasHighlights) => ({
+        editor,
+        hasHighlights,
+      })),
+    ),
+  );
+
+  // Only touch the context key when the active editor was among the ones
+  // we just refreshed. If the user is editing a buffer while focused on
+  // a different editor, the focused editor's state is owned by another
+  // refresh path and must not be overwritten here.
+  const activeResult = editorResults.find((r) => r.editor === activeEditor);
+  if (activeResult !== undefined) {
+    void setHasHighlightsContext(activeResult.hasHighlights);
+  }
 }
 
 async function refreshDecorationsNow(): Promise<void> {
@@ -602,6 +619,7 @@ async function refreshDecorationsNow(): Promise<void> {
       weakDecorations.clear(editor);
     }
     fileDecorations.clear();
+    void setHasHighlightsContext(false);
   };
 
   if (!isEnabled() || currentState.kind !== 'live') {
@@ -633,8 +651,16 @@ async function refreshDecorationsNow(): Promise<void> {
     largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
 
-  await Promise.all([
-    ...editors.map((editor) => applyToEditor(editor, inputs)),
+  const activeEditor = vscode.window.activeTextEditor;
+  const [editorResults] = await Promise.all([
+    Promise.all(
+      editors.map((editor) =>
+        applyToEditor(editor, inputs).then((hasHighlights) => ({
+          editor,
+          hasHighlights,
+        })),
+      ),
+    ),
     fileDecorations
       .refresh({
         runner: inputs.runner,
@@ -648,27 +674,52 @@ async function refreshDecorationsNow(): Promise<void> {
         );
       }),
   ]);
+
+  // The right-click menu items are gated on the *active* editor having
+  // highlights, so resolve that editor's result out of the batch.
+  const activeHasHighlights =
+    editorResults.find((r) => r.editor === activeEditor)?.hasHighlights ?? false;
+  void setHasHighlightsContext(activeHasHighlights);
+}
+
+/**
+ * Track whether the active editor currently shows weak highlights so the
+ * editor right-click menu can hide "Preview Conflict" / "Show Base Branch
+ * Changes" where they would do nothing. Mirrored into a VSCode context key
+ * because `when` clauses can only read context keys, not extension state.
+ */
+let lastHasHighlights: boolean | undefined;
+async function setHasHighlightsContext(value: boolean): Promise<void> {
+  if (value === lastHasHighlights) return;
+  lastHasHighlights = value;
+  await vscode.commands.executeCommand(
+    'setContext',
+    'conflictLens.hasHighlights',
+    value,
+  );
 }
 
 /**
  * Validate the editor's document path against the repo and dispatch the
- * weak coordinator.
+ * weak coordinator. Returns whether the editor ended up with at least one
+ * weak highlight — used to drive the `conflictLens.hasHighlights` context
+ * key that gates the editor right-click menu.
  */
 async function applyToEditor(
   editor: vscode.TextEditor,
   inputs: WeakHighlightInputs,
-): Promise<void> {
-  if (!runtime) return;
+): Promise<boolean> {
+  if (!runtime) return false;
   const { weakDecorations } = runtime;
   const doc = editor.document;
   if (doc.uri.scheme !== 'file' || doc.isUntitled) {
     weakDecorations.clear(editor);
-    return;
+    return false;
   }
   const within = await isFileWithinRepository(doc.uri.fsPath, inputs.repoRootPath);
   if (!within) {
     weakDecorations.clear(editor);
-    return;
+    return false;
   }
   // path.relative may yield "" for the repo root itself or platform-specific
   // separators on Windows. Git expects forward slashes for path arguments;
@@ -678,10 +729,10 @@ async function applyToEditor(
   const normalized = relative.split(path.sep).join('/');
   if (normalized === '' || normalized.startsWith('..')) {
     weakDecorations.clear(editor);
-    return;
+    return false;
   }
 
-  await weakDecorations.update({ editor, relativeFilePath: normalized, inputs });
+  return weakDecorations.update({ editor, relativeFilePath: normalized, inputs });
 }
 
 type NotificationAction = 'select-base-branch';

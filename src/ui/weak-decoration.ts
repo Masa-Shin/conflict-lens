@@ -105,14 +105,21 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
    * document is still at the version we started with; otherwise the
    * buffer has moved on and the result is discarded.
    */
-  async update(request: UpdateRequest): Promise<void> {
+  async update(request: UpdateRequest): Promise<boolean> {
     const { editor, relativeFilePath, inputs } = request;
     const document = editor.document;
     const startVersion = document.version;
     const ranges = await this.computeRanges(relativeFilePath, inputs, document);
-    if (this.disposed) return;
-    if (document.isClosed || document.version !== startVersion) return;
+    if (this.disposed) return false;
+    // If the buffer moved on we skip the apply, but the computed ranges are
+    // still the best available signal for "does this file have highlights"
+    // (the visible decorations are from a near-identical version) — a fresh
+    // refresh for the new version is already on its way.
+    if (document.isClosed || document.version !== startVersion) {
+      return ranges.length > 0;
+    }
     this.applyRanges(editor, ranges);
+    return ranges.length > 0;
   }
 
   /**

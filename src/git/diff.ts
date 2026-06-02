@@ -125,6 +125,32 @@ export async function resolveHeadSha(
 }
 
 /**
+ * Resolve an arbitrary ref (branch, tag, SHA) to the commit it points to.
+ * Returns `undefined` when the ref does not resolve to a commit or the call
+ * fails. `--verify` plus `^{commit}` peels annotated tags down to the commit
+ * and rejects non-commit objects; `--end-of-options` hardens against ref
+ * names beginning with `--`.
+ *
+ * Used by Show Base Changes to pin the diff to the base branch's *current*
+ * tip SHA, so the virtual diff URI changes whenever the base moves and
+ * VSCode cannot serve stale cached content.
+ */
+export async function resolveRefToCommit(
+  runner: GitRunner,
+  repoRootPath: string,
+  ref: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<string | undefined> {
+  const result = await runner.run(
+    ['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`],
+    { cwd: repoRootPath, signal: options.signal },
+  );
+  if (result.exitCode !== 0) return undefined;
+  const sha = result.stdout.trim();
+  return sha.length === 0 ? undefined : sha;
+}
+
+/**
  * Extract all hunk headers from a unified-diff payload. Non-`@@` lines are
  * ignored, so the function tolerates `diff --git`, `index`, `---`, `+++`
  * preamble lines as well as patch body lines (since we run with

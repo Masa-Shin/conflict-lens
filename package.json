@@ -127,12 +127,6 @@
           "scope": "window",
           "description": "%conflictLens.config.showOverviewRuler.description%"
         },
-        "conflictLens.showFileDecorationColors": {
-          "type": "boolean",
-          "default": false,
-          "scope": "window",
-          "description": "%conflictLens.config.showFileDecorationColors.description%"
-        },
         "conflictLens.showFileDecorationBadges": {
           "type": "boolean",
           "default": true,
@@ -167,18 +161,22 @@
           "highContrast": "#ffff0040",
           "highContrastLight": "#a06800a0"
         }
-      },
-      {
-        "id": "conflictLens.changedFileForeground",
-        "description": "%conflictLens.color.changedFileForeground.description%",
-        "defaults": {
-          "dark": "#d7ba7d",
-          "light": "#795e26",
-          "highContrast": "#f0e68c",
-          "highContrastLight": "#5a4500"
-        }
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "conflictLens.previewConflict",
+          "when": "conflictLens.hasHighlights",
+          "group": "conflictLens@1"
+        },
+        {
+          "command": "conflictLens.showBaseChanges",
+          "when": "conflictLens.hasHighlights",
+          "group": "conflictLens@2"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "node esbuild.config.mjs",

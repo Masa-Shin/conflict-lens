@@ -9,6 +9,7 @@ import {
   parseHunkHeaders,
   resolveHeadSha,
   resolveMergeBase,
+  resolveRefToCommit,
 } from '../../../src/git/diff';
 import { createGitRunner } from '../../../src/git/runner';
 
@@ -180,5 +181,27 @@ describe('resolveMergeBase / resolveHeadSha (integration)', () => {
     teardown.push(fx.repo);
     const result = await resolveMergeBase(runner, fx.repo, 'origin/does-not-exist');
     expect(result).toBeUndefined();
+  });
+
+  it('resolveRefToCommit resolves a branch name to its tip commit', async () => {
+    const fx = await makeBranchedRepo();
+    teardown.push(fx.repo);
+    const result = await resolveRefToCommit(runner, fx.repo, 'feature');
+    expect(result).toBe(fx.headOnFeature);
+  });
+
+  it('resolveRefToCommit returns undefined for a non-existent ref', async () => {
+    const fx = await makeBranchedRepo();
+    teardown.push(fx.repo);
+    const result = await resolveRefToCommit(runner, fx.repo, 'origin/nope');
+    expect(result).toBeUndefined();
+  });
+
+  it('resolveRefToCommit peels an annotated tag down to its commit', async () => {
+    const fx = await makeBranchedRepo();
+    teardown.push(fx.repo);
+    await run('git', ['tag', '-a', 'v1', '-m', 'release'], fx.repo);
+    const result = await resolveRefToCommit(runner, fx.repo, 'v1');
+    expect(result).toBe(fx.headOnFeature);
   });
 });
