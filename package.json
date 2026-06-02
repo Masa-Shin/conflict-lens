@@ -166,12 +166,12 @@
     "menus": {
       "editor/context": [
         {
-          "command": "conflictLens.previewConflict",
+          "command": "conflictLens.showBaseChanges",
           "when": "conflictLens.hasHighlights",
           "group": "conflictLens@1"
         },
         {
-          "command": "conflictLens.showBaseChanges",
+          "command": "conflictLens.previewConflict",
           "when": "conflictLens.hasHighlights",
           "group": "conflictLens@2"
         }
