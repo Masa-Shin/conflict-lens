@@ -13,7 +13,7 @@
 これにより、
 - コンフリクトの危険があるコードを開発中にシームレスに検知
 - 他の開発者との修正方針のバッティングを事前検知
-を可能にします。
+が可能になります。
 
 ## 目次
 
@@ -115,15 +115,13 @@
 | `conflictLens.baseBranch` | `origin/main` | string | 比較対象。空で自動検出 |
 | `conflictLens.remoteName` | `origin` | string | 自動検出で使うリモート名 |
 | `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーにハイライト位置を表示するか |
-| `conflictLens.showFileDecorationColors` | `false` | bool | Explorer 上でファイル名を色付けするか |
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | リモート更新検知の間隔（分）。`0` で無効 |
 | `conflictLens.largeFileHunkThreshold` | `200` | 1-10000 | 変更箇所がこの数を超えるファイルは装飾しない |
 
-ハイライトの色や、Explorer のファイル名色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
+ハイライトの色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
 
 - `conflictLens.changedLineBackground` — ベースが変更した行の背景色（デフォルト黄色）
-- `conflictLens.changedFileForeground` — ベースが変更したファイルのファイル名色
 
 ## コマンドリファレンス
 
@@ -136,7 +134,7 @@
 | `Conflict Lens: Select Base Branch` | ベースブランチを選択 |
 | `Conflict Lens: Show Changed Files` | 変更されたファイル一覧 |
 | `Conflict Lens: Show Base Branch Changes` | 現在のファイルとベースブランチの差分を表示
-| `Conflict Lens: Preview Conflict` | 予想されるコンフリクトを新規エディタで表示 |
+| `Conflict Lens: Preview Conflict` | 予想されるコンフリクトを読み取り専用のプレビューで表示 |
 | `Conflict Lens: Show Output Channel` | ログを表示 |
 
 
@@ -170,37 +168,32 @@ git log --oneline HEAD...origin/main
 
 ## 開発
 
-```sh
-npm install
-npm test        # vitest
-npm run build   # esbuild
-```
+### 開発環境の構築
 
-`F5` で Extension Development Host を起動して動作確認できます。
+VSCodeの設定ファイルに以下を追加することで、Extension Development Host を起動し拡張機能の動作確認ができるようになります。
 
-動作確認のために特定のフォルダを開いた状態で起動したい場合は、リポジトリの `.vscode/launch.json` を書き換えないでください。個人環境の絶対パスが共有設定に混ざってしまいます。代わりに、自分のユーザー設定（コマンドパレットの「Preferences: Open User Settings (JSON)」）に `launch` を追加すると、コミットされない個人用の起動構成になります。
+※ `</path/to/conflict-lens>`には、このリポジトリの絶対パスを入れてください
+※ `</path/to/your/test-repo>`には、動作確認に使うリポジトリの絶対パスを入れてください
 
 ```jsonc
 "launch": {
   "configurations": [
     {
-      "name": "Run Extension (テスト対象を指定)",
+      "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}",
-        "/path/to/your/test-repo"
+        "--extensionDevelopmentPath=/path/to/conflict-lens",
+        "</path/to/your/test-repo>"
       ],
-      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "outFiles": ["</path/to/conflict-lens>/dist/**/*.js"],
       "preLaunchTask": "npm: build"
     }
   ]
 }
 ```
 
-## プライバシー
-
-本拡張は使用状況・テレメトリ等のデータを一切外部送信しません。Git の実行とローカル設定の読み書き以外のネットワーク通信は行いません。
+Extension Development Host の起動には「fn + F5」を押下してください。
 
 ## ライセンス
 

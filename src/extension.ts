@@ -18,7 +18,7 @@ import {
   GitCatFileBatch,
 } from './git/cat-file-batch';
 import { listChangedFilesOnBase } from './git/changed-files';
-import { resolveMergeBase } from './git/diff';
+import { resolveMergeBase, resolveRefToCommit } from './git/diff';
 import type { BlobReader } from './git/blob';
 import { runMergeFile } from './git/merge-file';
 import {
@@ -65,7 +65,6 @@ const BASE_BRANCH_SETTING = 'baseBranch';
 const REMOTE_NAME_SETTING = 'remoteName';
 const ENABLED_SETTING = 'enabled';
 const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
-const SHOW_FILE_DECORATION_COLORS_SETTING = 'showFileDecorationColors';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
 const LARGE_FILE_HUNK_THRESHOLD_SETTING = 'largeFileHunkThreshold';
@@ -79,11 +78,20 @@ const LARGE_FILE_HUNK_THRESHOLD_SETTING = 'largeFileHunkThreshold';
  */
 const DIFF_PROVIDER_SCHEME = 'conflict-lens';
 
+/**
+ * Scheme for the read-only "Preview Conflict" virtual document. Kept
+ * separate from `DIFF_PROVIDER_SCHEME` because that provider derives its
+ * content from a URI alone (a blob ref), whereas the conflict preview
+ * depends on the live editor buffer and must be stashed by the command.
+ */
+const CONFLICT_PREVIEW_SCHEME = 'conflict-lens-preview';
+
 interface RuntimeState {
   logChannel: vscode.LogOutputChannel;
   statusBarItem: vscode.StatusBarItem;
   weakDecorations: WeakDecorationCoordinator;
   fileDecorations: FileDecorationCoordinator;
+  conflictPreviews: ConflictPreviewContentProvider;
 }
 
 interface LiveContext {
@@ -135,13 +143,19 @@ export function activate(context: vscode.ExtensionContext): void {
   const diffContentProvider = new BaseSideContentProvider(() =>
     currentState.kind === 'live' ? currentState.context.readBlob : undefined,
   );
+  const conflictPreviews = new ConflictPreviewContentProvider();
   context.subscriptions.push(
     weakDecorations,
     fileDecorations,
+    conflictPreviews,
     vscode.window.registerFileDecorationProvider(fileDecorations),
     vscode.workspace.registerTextDocumentContentProvider(
       DIFF_PROVIDER_SCHEME,
       diffContentProvider,
+    ),
+    vscode.workspace.registerTextDocumentContentProvider(
+      CONFLICT_PREVIEW_SCHEME,
+      conflictPreviews,
     ),
   );
 
@@ -150,6 +164,7 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBarItem,
     weakDecorations,
     fileDecorations,
+    conflictPreviews,
   };
   oneShotNotificationsShown = new Set();
   setState({ kind: 'initializing' });
@@ -266,13 +281,9 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       const visualsChanged = event.affectsConfiguration(
         `${CONFIG_NAMESPACE}.${SHOW_OVERVIEW_RULER_SETTING}`,
       );
-      const fileDecorationsChanged =
-        event.affectsConfiguration(
-          `${CONFIG_NAMESPACE}.${SHOW_FILE_DECORATION_COLORS_SETTING}`,
-        ) ||
-        event.affectsConfiguration(
-          `${CONFIG_NAMESPACE}.${SHOW_FILE_DECORATION_BADGES_SETTING}`,
-        );
+      const fileDecorationsChanged = event.affectsConfiguration(
+        `${CONFIG_NAMESPACE}.${SHOW_FILE_DECORATION_BADGES_SETTING}`,
+      );
       const thresholdChanged = event.affectsConfiguration(
         `${CONFIG_NAMESPACE}.${LARGE_FILE_HUNK_THRESHOLD_SETTING}`,
       );
@@ -456,7 +467,6 @@ function readWeakDecorationSettings(): WeakDecorationSettings {
 function readFileDecorationSettings(): FileDecorationSettings {
   const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return {
-    showColors: cfg.get<boolean>(SHOW_FILE_DECORATION_COLORS_SETTING, false),
     showBadges: cfg.get<boolean>(SHOW_FILE_DECORATION_BADGES_SETTING, true),
   };
 }
@@ -1206,6 +1216,53 @@ class BaseSideContentProvider implements vscode.TextDocumentContentProvider {
   }
 }
 
+/**
+ * Serves the trial-merge "Preview Conflict" output as a read-only virtual
+ * document. Unlike the base-side blob (which a URI fully describes via its
+ * ref), the merged text depends on the live editor buffer, so the command
+ * computes it and stashes it here keyed by URI. `set` re-fires `onDidChange`
+ * so reopening after an edit refreshes the same tab instead of leaving stale
+ * content behind.
+ */
+class ConflictPreviewContentProvider
+  implements vscode.TextDocumentContentProvider, vscode.Disposable
+{
+  private readonly contents = new Map<string, string>();
+  private readonly didChangeEmitter = new vscode.EventEmitter<vscode.Uri>();
+  readonly onDidChange = this.didChangeEmitter.event;
+
+  set(uri: vscode.Uri, content: string): void {
+    this.contents.set(uri.toString(), content);
+    this.didChangeEmitter.fire(uri);
+  }
+
+  provideTextDocumentContent(uri: vscode.Uri): string {
+    return this.contents.get(uri.toString()) ?? '';
+  }
+
+  dispose(): void {
+    this.contents.clear();
+    this.didChangeEmitter.dispose();
+  }
+}
+
+/**
+ * Build the read-only preview URI for a repo-relative path. The basename
+ * carries a " (Conflict Preview)" marker so the tab is not mistaken for the
+ * real file, while the original extension stays last so VSCode still infers
+ * the right language for syntax highlighting.
+ */
+function buildConflictPreviewUri(relativeFilePath: string): vscode.Uri {
+  const parsed = path.posix.parse(relativeFilePath);
+  const base = `${parsed.name} (Conflict Preview)${parsed.ext}`;
+  const previewPath = parsed.dir ? `${parsed.dir}/${base}` : base;
+  return vscode.Uri.from({
+    scheme: CONFLICT_PREVIEW_SCHEME,
+    authority: 'conflict',
+    path: `/${previewPath}`,
+  });
+}
+
 async function showChangedFilesCommand(): Promise<void> {
   if (currentState.kind !== 'live') {
     void vscode.window.showInformationMessage(
@@ -1322,7 +1379,22 @@ async function resolveActiveTarget(): Promise<
 async function showBaseChangesCommand(): Promise<void> {
   const target = await resolveActiveTarget();
   if (!target) return;
-  const { baseBranch, doc, relativeFilePath } = target;
+  const { ctx, baseBranch, doc, relativeFilePath } = target;
+
+  // Pin the base side to the commit the branch points at *right now*. The
+  // virtual-document URI is keyed solely on its components, and the content
+  // provider never fires onDidChange, so a URI that carried only the branch
+  // name (`origin/main`) would be byte-for-byte identical before and after a
+  // fetch — VSCode would then serve the stale, cached base content. Embedding
+  // the resolved tip SHA makes the URI change whenever base moves, and also
+  // pins the read so base cannot shift between URI construction and content
+  // fetch. Fall back to the branch name if resolution fails.
+  const baseSha = await resolveRefToCommit(
+    ctx.environment.runner,
+    ctx.repository.rootPath,
+    baseBranch,
+  );
+  const baseRef = baseSha ?? baseBranch;
 
   // LEFT side: the user's local buffer (the starting point).
   // RIGHT side: the file as it currently exists on the base branch's
@@ -1333,7 +1405,7 @@ async function showBaseChangesCommand(): Promise<void> {
     scheme: DIFF_PROVIDER_SCHEME,
     authority: 'base',
     path: `/${relativeFilePath}`,
-    query: baseBranch,
+    query: baseRef,
   });
 
   try {
@@ -1366,8 +1438,9 @@ async function previewConflictCommand(): Promise<void> {
 /**
  * Open the trial-merge output (with the same `<<<<<<<` / `|||||||` /
  * `=======` / `>>>>>>>` markers that `git merge` itself would write)
- * as an untitled document so the user can preview exactly what the
- * conflict will look like once they actually merge.
+ * as a read-only virtual document so the user can preview exactly what
+ * the conflict will look like once they actually merge — without a new
+ * unsaved file appearing in the workspace.
  */
 async function openConflictView(
   ctx: LiveContext,
@@ -1426,11 +1499,19 @@ async function openConflictView(
     return;
   }
 
-  const newDoc = await vscode.workspace.openTextDocument({
-    content: merged.content,
-    language: doc.languageId,
-  });
-  await vscode.window.showTextDocument(newDoc, { preview: true });
+  const previewUri = buildConflictPreviewUri(relativeFilePath);
+  runtime?.conflictPreviews.set(previewUri, merged.content);
+  let previewDoc = await vscode.workspace.openTextDocument(previewUri);
+  // The URI extension usually resolves to the right language, but pin it to
+  // the source editor's languageId so previews match the original file even
+  // when extension-based detection would differ.
+  if (previewDoc.languageId !== doc.languageId) {
+    previewDoc = await vscode.languages.setTextDocumentLanguage(
+      previewDoc,
+      doc.languageId,
+    );
+  }
+  await vscode.window.showTextDocument(previewDoc, { preview: true });
 }
 
 async function setEnabledCommand(value: boolean): Promise<void> {
