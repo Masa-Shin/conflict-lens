@@ -78,7 +78,14 @@ export class GitCatFileBatch {
   private readonly queue: PendingRequest[] = [];
   private current: PendingRequest | undefined;
   private state: ReaderState = { kind: 'header' };
-  private buffer: Buffer = Buffer.alloc(0);
+  /**
+   * Unparsed stdout bytes, held as the raw pipe chunks rather than one
+   * growing buffer. Appending is O(1) and the body is concatenated exactly
+   * once (in `take`), so a large blob arriving in many chunks costs O(size)
+   * total — not the O(size²) a concat-on-every-`data` accumulator would.
+   */
+  private chunks: Buffer[] = [];
+  private buffered = 0;
   private disposed = false;
   private readonly maxBlobBytes: number;
 
@@ -195,19 +202,82 @@ export class GitCatFileBatch {
   }
 
   private onData(chunk: Buffer): void {
-    this.buffer = this.buffer.length === 0 ? chunk : Buffer.concat([this.buffer, chunk]);
+    this.chunks.push(chunk);
+    this.buffered += chunk.length;
     while (this.parseOne()) {
       /* consume as much as possible */
     }
   }
 
+  /** Offset of the first byte `b` across the buffered chunks, or -1. */
+  private indexOfByte(b: number): number {
+    let base = 0;
+    for (const chunk of this.chunks) {
+      const i = chunk.indexOf(b);
+      if (i !== -1) return base + i;
+      base += chunk.length;
+    }
+    return -1;
+  }
+
+  /**
+   * Remove and return the first `n` buffered bytes as one Buffer. Caller
+   * must ensure `n <= this.buffered`. Copies at most `n` bytes once; when a
+   * single chunk already holds the request the chunk (or a view of it) is
+   * handed back without copying.
+   */
+  private take(n: number): Buffer {
+    if (n === 0) return Buffer.alloc(0);
+    const first = this.chunks[0];
+    if (first.length === n) {
+      this.chunks.shift();
+      this.buffered -= n;
+      return first;
+    }
+    if (first.length > n) {
+      const out = first.subarray(0, n);
+      this.chunks[0] = first.subarray(n);
+      this.buffered -= n;
+      return out;
+    }
+    const out = Buffer.allocUnsafe(n);
+    let off = 0;
+    while (off < n) {
+      const chunk = this.chunks[0];
+      const take = Math.min(chunk.length, n - off);
+      chunk.copy(out, off, 0, take);
+      if (take === chunk.length) this.chunks.shift();
+      else this.chunks[0] = chunk.subarray(take);
+      off += take;
+    }
+    this.buffered -= n;
+    return out;
+  }
+
+  /**
+   * Discard up to `n` buffered bytes without materializing them. Returns
+   * the number actually dropped (less than `n` only when the buffer ran dry).
+   */
+  private drop(n: number): number {
+    let dropped = 0;
+    while (dropped < n && this.chunks.length > 0) {
+      const chunk = this.chunks[0];
+      const take = Math.min(chunk.length, n - dropped);
+      if (take === chunk.length) this.chunks.shift();
+      else this.chunks[0] = chunk.subarray(take);
+      this.buffered -= take;
+      dropped += take;
+    }
+    return dropped;
+  }
+
   private parseOne(): boolean {
     if (!this.current) return false;
     if (this.state.kind === 'header') {
-      const nlIdx = this.buffer.indexOf(0x0a);
+      const nlIdx = this.indexOfByte(0x0a);
       if (nlIdx === -1) return false;
-      const line = this.buffer.subarray(0, nlIdx).toString('utf8');
-      this.buffer = this.buffer.subarray(nlIdx + 1);
+      const line = this.take(nlIdx).toString('utf8');
+      this.drop(1); // trailing LF
       const parsed = parseHeaderLine(line);
       if (parsed.kind === 'missing' || parsed.kind === 'ambiguous') {
         this.completeCurrent({ kind: parsed.kind });
@@ -233,10 +303,8 @@ export class GitCatFileBatch {
     }
 
     if (this.state.kind === 'skip') {
-      if (this.buffer.length === 0) return false;
-      const take = Math.min(this.state.remaining, this.buffer.length);
-      this.buffer = this.buffer.subarray(take);
-      const remaining = this.state.remaining - take;
+      if (this.buffered === 0) return false;
+      const remaining = this.state.remaining - this.drop(this.state.remaining);
       if (remaining > 0) {
         this.state = { kind: 'skip', remaining, size: this.state.size };
         return false; // wait for the rest of the oversized body
@@ -249,9 +317,9 @@ export class GitCatFileBatch {
 
     // body
     const needed = this.state.size + 1; // content + trailing LF
-    if (this.buffer.length < needed) return false;
-    const content = Buffer.from(this.buffer.subarray(0, this.state.size));
-    this.buffer = this.buffer.subarray(needed);
+    if (this.buffered < needed) return false;
+    const content = this.take(this.state.size);
+    this.drop(1); // trailing LF
     const result: CatFileBatchResult = {
       kind: 'ok',
       sha: this.state.sha,
@@ -290,7 +358,8 @@ export class GitCatFileBatch {
     this.queue.length = 0;
     // Mark the child as dead so the next `read()` triggers a respawn.
     this.child = undefined;
-    this.buffer = Buffer.alloc(0);
+    this.chunks = [];
+    this.buffered = 0;
     this.state = { kind: 'header' };
   }
 }
