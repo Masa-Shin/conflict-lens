@@ -57,6 +57,20 @@ const CACHE_MAX_ENTRY_BYTES = 4 * 1024 * 1024;
 const BASE_DIFF_CACHE_MAX_BYTES = 16 * 1024 * 1024;
 const BASE_DIFF_CACHE_MAX_ENTRY_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Spec §3.4 companion to `largeFileHunkThreshold`. A file past either of
+ * these limits is treated as generated rather than hand-written: weak
+ * highlights add no value there, so we bail before any git work. Gating up
+ * front (on values the editor already holds) skips the `git diff`/`git show`
+ * spawn entirely and keeps the base-diff cache from thrashing on a merge-base
+ * blob too large to store — which would otherwise re-spawn git on every
+ * keystroke. The char limit sits well under the base-diff cache's per-entry
+ * cap (~2M chars at `length * 2`) so every file we *do* process stays
+ * cacheable.
+ */
+const MAX_HIGHLIGHT_LINES = 20_000;
+const MAX_HIGHLIGHT_CHARS = 1_500_000;
+
 function sizeOfBaseDiff(entry: BaseDiff): number {
   return entry.leftContent.length * 2 + entry.hunks.length * 32;
 }
@@ -182,7 +196,25 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
 
     let entry = this.inflight.get(cacheKey);
     if (!entry) {
-      entry = this.startCompute(cacheKey, inputs, relativeFilePath, document, startVersion);
+      const rightContent = document.getText();
+      if (
+        document.lineCount > MAX_HIGHLIGHT_LINES ||
+        rightContent.length > MAX_HIGHLIGHT_CHARS
+      ) {
+        // Too large to be hand-written; skip the git-side work. Cache the
+        // empty result so a same-version re-entry stays free per guarantee 2.
+        const empty: WeakHighlightRange[] = [];
+        this.cache.set(cacheKey, empty);
+        return empty;
+      }
+      entry = this.startCompute(
+        cacheKey,
+        inputs,
+        relativeFilePath,
+        document,
+        startVersion,
+        rightContent,
+      );
     }
     try {
       return await entry.promise;
@@ -206,9 +238,9 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     relativeFilePath: string,
     document: vscode.TextDocument,
     startVersion: number,
+    rightContent: string,
   ): InflightEntry {
     const controller = new AbortController();
-    const rightContent = document.getText();
     const promise = this.getBaseDiff(inputs, relativeFilePath, controller.signal).then(
       (baseDiff) => applyBaseDiffToBuffer(baseDiff, rightContent),
     );
@@ -348,7 +380,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       const endLine = Math.max(startLine, Math.min(range.endLine - 1, lineCount - 1));
       decorations.push({
         range: new vscode.Range(startLine, 0, endLine, Number.MAX_SAFE_INTEGER),
-        hoverMessage: this.buildHoverMessage(startLine),
+        hoverMessage: this.buildHoverMessage(startLine, editor.document.uri),
       });
     }
     editor.setDecorations(this.decorationType, decorations);
@@ -368,17 +400,27 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     return vscode.window.createTextEditorDecorationType(options);
   }
 
-  private buildHoverMessage(startLine: number): vscode.MarkdownString {
+  private buildHoverMessage(
+    startLine: number,
+    documentUri: vscode.Uri,
+  ): vscode.MarkdownString {
     const baseEscaped = escapeMarkdown(this.baseBranchLabel);
     const md = new vscode.MarkdownString(
       t('Changed relative to {0}', baseEscaped),
     );
-    // Pass the hovered hunk's first line (0-based) so the diff editor
-    // can open scrolled to that spot rather than always at file top.
-    const showBaseArgs = encodeURIComponent(JSON.stringify([startLine]));
+    // Carry the hovered document's URI in the command args. Hovering does
+    // not move focus, so in a split layout `vscode.window.activeTextEditor`
+    // can point at a different file than the one under the cursor; without
+    // this the commands would act on the wrong file (and the diff would
+    // scroll a stale buffer to the hovered line). The first arg of
+    // showBaseChanges is the hovered hunk's first line (0-based) so the diff
+    // editor opens scrolled to that spot rather than always at file top.
+    const uri = documentUri.toString();
+    const showBaseArgs = encodeURIComponent(JSON.stringify([startLine, uri]));
+    const previewArgs = encodeURIComponent(JSON.stringify([uri]));
     md.appendMarkdown(
       `\n\n[${t('Show base changes')}](command:conflictLens.showBaseChanges?${showBaseArgs})` +
-        ` · [${t('Preview conflict')}](command:conflictLens.previewConflict)`,
+        ` · [${t('Preview conflict')}](command:conflictLens.previewConflict?${previewArgs})`,
     );
     // Whitelist only our own commands so generic `command:?` URIs cannot
     // execute when the user hovers a decoration in a hostile workspace.

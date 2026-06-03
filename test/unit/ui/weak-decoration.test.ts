@@ -211,6 +211,32 @@ describe('WeakDecorationCoordinator', () => {
     expect(mockedLoad).toHaveBeenCalledTimes(1);
   });
 
+  it('skips the git-side load for files past the line-count gate', async () => {
+    const editor = fakeEditor();
+    editor.document.lineCount = 20_001;
+    const result = await coord.update({
+      editor: editor as never,
+      relativeFilePath: 'generated.txt',
+      inputs: makeInputs(),
+    });
+    expect(mockedLoad).not.toHaveBeenCalled();
+    expect(result).toBe(false);
+    expect(editor._calls[0]!.options).toEqual([]);
+  });
+
+  it('skips the git-side load for files past the char-count gate', async () => {
+    const huge = 'x'.repeat(1_500_001);
+    const editor = fakeEditor(huge);
+    editor.document.lineCount = 1;
+    const result = await coord.update({
+      editor: editor as never,
+      relativeFilePath: 'minified.js',
+      inputs: makeInputs(),
+    });
+    expect(mockedLoad).not.toHaveBeenCalled();
+    expect(result).toBe(false);
+  });
+
   it('refreshVisuals rebuilds the decoration type only when toggles flip', () => {
     const initial = (coord as unknown as { decorationType: TextEditorDecorationType })
       .decorationType;
