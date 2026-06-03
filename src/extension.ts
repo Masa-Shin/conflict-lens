@@ -299,13 +299,17 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
         stateChanged = true;
         return { kind: 'live', context: { ...prev.context, gitState: next } };
       });
-      // HEAD may have moved (commit, checkout). Re-resolve the merge-base
-      // so cached values used during typing reflect the new HEAD, then
-      // run weak highlights.
       if (stateChanged) {
         runtime?.weakDecorations.invalidateAll();
-        await refreshMergeBase();
       }
+      // Always re-resolve the merge-base. A `state.onDidChange` event may
+      // signal a base-side fetch (vscode.git auto-fetch, or a manual
+      // `git fetch`) that moves `refs/remotes/<base>` without touching
+      // HEAD; in that case the gitState comparison reports "no change"
+      // yet the merge-base may still shift. `refreshMergeBase` invalidates
+      // the cache itself whenever the SHA actually moves, so the only
+      // cost of always calling it is the one `git merge-base` spawn.
+      await refreshMergeBase();
       scheduleDecorationRefresh();
     } catch (err) {
       runtime?.logChannel.warn(`State re-evaluation failed: ${stringifyError(err)}`);
@@ -405,6 +409,7 @@ async function refreshMergeBase(): Promise<void> {
     runtime?.logChannel.warn(`resolveMergeBase threw: ${stringifyError(err)}`);
     sha = undefined;
   }
+  let shaChanged = false;
   setState((prev) => {
     if (prev.kind !== 'live') return prev;
     // The base may have been switched out from under us during the await
@@ -413,8 +418,16 @@ async function refreshMergeBase(): Promise<void> {
     // value sitting around until the next merge-base-moving event.
     if (prev.context.baseBranch !== resolvedFor) return prev;
     if (prev.context.mergeBaseSha === sha) return prev;
+    shaChanged = true;
     return { kind: 'live', context: { ...prev.context, mergeBaseSha: sha } };
   });
+  if (shaChanged) {
+    // Base tip (or HEAD) moved enough to shift the merge-base. Every
+    // cached base-diff was computed against the previous SHA and is now
+    // stale; drop them so the next refresh recomputes against the new
+    // merge-base instead of re-serving the old highlights.
+    runtime?.weakDecorations.invalidateAll();
+  }
 }
 
 async function refreshBaseBranch(): Promise<void> {
