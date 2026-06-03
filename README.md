@@ -117,7 +117,6 @@
 | `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーにハイライト位置を表示するか |
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | リモート更新検知の間隔（分）。`0` で無効 |
-| `conflictLens.largeFileHunkThreshold` | `200` | 1-10000 | 変更箇所がこの数を超えるファイルは装飾しない |
 
 ハイライトの色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
 
