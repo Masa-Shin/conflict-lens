@@ -110,6 +110,30 @@ describe('WeakDecorationCoordinator', () => {
     expect(opt.range.end.line).toBe(1);
   });
 
+  it('embeds the hovered document URI in both hover command links', async () => {
+    mockedApply.mockReturnValueOnce([
+      { startLine: 2, endLine: 2, insertion: false },
+    ]);
+    const editor = fakeEditor();
+    await coord.update({
+      editor: editor as never,
+      relativeFilePath: 'file.txt',
+      inputs: makeInputs(),
+    });
+    const opt = editor._calls[0]!.options[0] as { hoverMessage: { value: string } };
+    const value = opt.hoverMessage.value;
+    const uri = editor.document.uri.toString();
+    // 1-based startLine 2 → 0-based line 1, paired with the URI.
+    const showBaseArgs = encodeURIComponent(JSON.stringify([1, uri]));
+    const previewArgs = encodeURIComponent(JSON.stringify([uri]));
+    expect(value).toContain(
+      `command:conflictLens.showBaseChanges?${showBaseArgs}`,
+    );
+    expect(value).toContain(
+      `command:conflictLens.previewConflict?${previewArgs}`,
+    );
+  });
+
   it('skips the git-side load on a same-input re-update; only the buffer-side mapping re-runs', async () => {
     mockedApply.mockReturnValueOnce([
       { startLine: 1, endLine: 1, insertion: false },

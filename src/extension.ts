@@ -1463,7 +1463,7 @@ async function showChangedFilesCommand(): Promise<void> {
  * message. Shared by `showBaseChangesCommand` and `previewConflictCommand`
  * because their entry-point validation is identical.
  */
-async function resolveActiveTarget(): Promise<
+async function resolveActiveTarget(targetUri?: string): Promise<
   | {
       ctx: LiveContext;
       baseBranch: string;
@@ -1472,8 +1472,21 @@ async function resolveActiveTarget(): Promise<
     }
   | undefined
 > {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
+  // When invoked from a weak-highlight hover, the hovered document's URI is
+  // passed explicitly: hovering does not move focus, so in a split layout
+  // `activeTextEditor` may be a different file than the one under the cursor.
+  // Prefer the hovered document and fall back to the active editor only for
+  // direct invocations (command palette, right-click menu) that omit it.
+  let doc: vscode.TextDocument | undefined;
+  if (targetUri) {
+    doc = vscode.workspace.textDocuments.find(
+      (d) => d.uri.toString() === targetUri,
+    );
+  }
+  if (!doc) {
+    doc = vscode.window.activeTextEditor?.document;
+  }
+  if (!doc) {
     void vscode.window.showInformationMessage(
       t('{0}: no active editor.', EXTENSION_NAME),
     );
@@ -1496,7 +1509,6 @@ async function resolveActiveTarget(): Promise<
     );
     return undefined;
   }
-  const doc = editor.document;
   if (doc.uri.scheme !== 'file') return undefined;
 
   const within = await isFileWithinRepository(doc.uri.fsPath, ctx.repository.rootPath);
@@ -1518,8 +1530,11 @@ async function resolveActiveTarget(): Promise<
  * compared to the user's local buffer. Paired visually with the weak
  * (yellow) highlight, which marks the lines base touched.
  */
-async function showBaseChangesCommand(line?: number): Promise<void> {
-  const target = await resolveActiveTarget();
+async function showBaseChangesCommand(
+  line?: number,
+  targetUri?: string,
+): Promise<void> {
+  const target = await resolveActiveTarget(targetUri);
   if (!target) return;
   const { ctx, baseBranch, doc, relativeFilePath } = target;
 
@@ -1579,8 +1594,8 @@ async function showBaseChangesCommand(line?: number): Promise<void> {
  * palette; when the trial merge resolves cleanly, surfaces a "no
  * conflicts" notification instead of opening an empty document.
  */
-async function previewConflictCommand(): Promise<void> {
-  const target = await resolveActiveTarget();
+async function previewConflictCommand(targetUri?: string): Promise<void> {
+  const target = await resolveActiveTarget(targetUri);
   if (!target) return;
   const { ctx, baseBranch, doc, relativeFilePath } = target;
   await openConflictView(ctx, baseBranch, doc, relativeFilePath);
