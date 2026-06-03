@@ -22,8 +22,13 @@ import type { GitRunner } from './runner';
  *  - `--no-color`: deterministic output.
  *  - `--end-of-options`: hardening against ref names beginning with `--`.
  *
- * Returns `[]` if the command fails for any reason, so the
- * file-decoration pipeline can fall back to "no decoration" gracefully.
+ * Throws if the command exits non-zero. The callers depend on the
+ * distinction between "the base genuinely changed no files" (empty
+ * result) and "we could not determine the changed set" (failure): on
+ * failure the file-decoration pipeline must keep its previous state and
+ * fall back to the per-file diff rather than treat every file as
+ * unchanged and drop the weak highlight. An empty array is therefore
+ * reserved for a successful run that found nothing.
  */
 export async function listChangedFilesOnBase(
   runner: GitRunner,
@@ -47,6 +52,10 @@ export async function listChangedFilesOnBase(
     ],
     { cwd: repoRootPath, signal: options.signal },
   );
-  if (result.exitCode !== 0) return [];
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `git diff --name-only (base side) for ${baseBranch} exited with ${result.exitCode}: ${result.stderr.trim()}`,
+    );
+  }
   return result.stdout.split('\0').filter((s) => s.length > 0);
 }

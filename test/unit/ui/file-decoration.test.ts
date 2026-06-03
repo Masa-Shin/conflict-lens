@@ -119,6 +119,29 @@ describe('FileDecorationCoordinator', () => {
       coord.clear();
       expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt')).toBeUndefined();
     });
+
+    // Regression: a failed fetch must not finalize the cache key as an
+    // empty set. If it did, hasBaseChange would report "not changed" for
+    // every file (dropping the weak highlight) and the soft cache would
+    // refuse to retry until the base moved.
+    it('stays "unknown" and retries after a failed fetch', async () => {
+      listChanged.mockRejectedValueOnce(new Error('git diff failed'));
+      await expect(coord.refresh(makeInputs())).rejects.toThrow();
+
+      // Not finalized: the trio is still unknown, so callers fall back to
+      // their own pipeline instead of assuming the file is unchanged.
+      expect(
+        coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt'),
+      ).toBeUndefined();
+
+      // Not stuck: the same trio is fetched again rather than short-circuited.
+      listChanged.mockResolvedValueOnce(['a.txt']);
+      await coord.refresh(makeInputs());
+      expect(listChanged).toHaveBeenCalledTimes(2);
+      expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt')).toBe(
+        true,
+      );
+    });
   });
 
   it('fires onDidChangeFileDecorations whenever the state changes', async () => {

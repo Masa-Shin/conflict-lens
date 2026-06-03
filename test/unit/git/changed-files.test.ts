@@ -99,10 +99,12 @@ describe('listChangedFilesOnBase', () => {
     ]);
   });
 
-  it('returns [] on an unknown ref instead of throwing', async () => {
+  it('throws on an unknown ref so callers can tell failure from an empty diff', async () => {
     const repo = await newRepo();
     teardown.push(repo);
     await commit(repo, 'a.txt', 'a\n', 'mb');
-    expect(await listChangedFilesOnBase(runner, repo, 'origin/never')).toEqual([]);
+    await expect(
+      listChangedFilesOnBase(runner, repo, 'origin/never'),
+    ).rejects.toThrow();
   });
 });
