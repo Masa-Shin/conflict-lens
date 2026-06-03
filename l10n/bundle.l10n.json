@@ -52,5 +52,7 @@
   "(cherry-picking)": "(cherry-picking)",
   "(reverting)": "(reverting)",
   "detached": "detached",
-  "bisecting": "bisecting"
+  "bisecting": "bisecting",
+  "{0}: highlights suppressed": "{0}: highlights suppressed",
+  "{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes.": "{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes."
 }

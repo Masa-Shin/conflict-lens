@@ -36,9 +36,11 @@ export function cacheKeyFor(
 
 /**
  * Escape Markdown metacharacters in dynamic strings before embedding them
- * in a `MarkdownString` hover. The hover itself is constructed with
- * `isTrusted = false` so command links cannot fire, but escaping avoids
- * accidental formatting (e.g. branch names containing `*`).
+ * in a `MarkdownString` hover. The hover is trusted (its `isTrusted`
+ * allow-lists Conflict Lens's own command links so they fire — see
+ * `buildHoverMessage`), so escaping matters here: it stops a branch name
+ * from injecting link/command syntax of its own and keeps incidental
+ * characters (e.g. a `*` in the name) from being rendered as formatting.
  */
 export function escapeMarkdown(text: string): string {
   return text.replace(/[\\`*_[\]()<>#~|!{}+-]/g, (c) => `\\${c}`);

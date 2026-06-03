@@ -237,15 +237,28 @@ describe('WeakDecorationCoordinator', () => {
 
   it('skips the git-side load for files past the line-count gate', async () => {
     const editor = fakeEditor();
-    editor.document.lineCount = 20_001;
+    editor.document.lineCount = 15_001;
     const result = await coord.update({
       editor: editor as never,
       relativeFilePath: 'generated.txt',
       inputs: makeInputs(),
     });
     expect(mockedLoad).not.toHaveBeenCalled();
-    expect(result).toBe(false);
+    expect(result).toBe('suppressed');
     expect(editor._calls[0]!.options).toEqual([]);
+  });
+
+  it('still highlights a file just under the line-count gate', async () => {
+    mockedApply.mockReturnValueOnce([{ startLine: 1, endLine: 1, insertion: false }]);
+    const editor = fakeEditor();
+    editor.document.lineCount = 15_000;
+    const result = await coord.update({
+      editor: editor as never,
+      relativeFilePath: 'big-but-handwritten.ts',
+      inputs: makeInputs(),
+    });
+    expect(mockedLoad).toHaveBeenCalledTimes(1);
+    expect(result).toBe('highlighted');
   });
 
   it('skips the git-side load for files past the char-count gate', async () => {
@@ -258,7 +271,30 @@ describe('WeakDecorationCoordinator', () => {
       inputs: makeInputs(),
     });
     expect(mockedLoad).not.toHaveBeenCalled();
-    expect(result).toBe(false);
+    expect(result).toBe('suppressed');
+  });
+
+  it('reports clean when the file is changed-free (empty hunks, not suppressed)', async () => {
+    mockedApply.mockReturnValueOnce([]);
+    const editor = fakeEditor();
+    const result = await coord.update({
+      editor: editor as never,
+      relativeFilePath: 'unchanged.ts',
+      inputs: makeInputs(),
+    });
+    expect(result).toBe('clean');
+  });
+
+  it('reports suppressed when the base-diff was hunk-threshold suppressed', async () => {
+    mockedLoad.mockResolvedValueOnce({ hunks: [], leftContent: '', suppressed: true });
+    mockedApply.mockReturnValueOnce([]);
+    const editor = fakeEditor();
+    const result = await coord.update({
+      editor: editor as never,
+      relativeFilePath: 'noisy.ts',
+      inputs: makeInputs(),
+    });
+    expect(result).toBe('suppressed');
   });
 
   it('refreshVisuals rebuilds the decoration type only when toggles flip', () => {

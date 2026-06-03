@@ -39,6 +39,7 @@ import {
 } from './ui/file-decoration';
 import {
   WeakDecorationCoordinator,
+  type HighlightOutcome,
   type WeakDecorationSettings,
   type WeakHighlightInputs,
 } from './ui/weak-decoration';
@@ -89,6 +90,13 @@ const CONFLICT_PREVIEW_SCHEME = 'conflict-lens-preview';
 interface RuntimeState {
   logChannel: vscode.LogOutputChannel;
   statusBarItem: vscode.StatusBarItem;
+  /**
+   * Secondary status-bar item shown only while the active editor is
+   * changed-on-base but has its weak highlights suppressed (file too large,
+   * or more hunks than `largeFileHunkThreshold`). Lets the user tell "no
+   * highlights" apart from "highlights deliberately off".
+   */
+  suppressedStatusItem: vscode.StatusBarItem;
   weakDecorations: WeakDecorationCoordinator;
   fileDecorations: FileDecorationCoordinator;
   conflictPreviews: ConflictPreviewContentProvider;
@@ -140,6 +148,20 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
+  const suppressedStatusItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    99,
+  );
+  suppressedStatusItem.name = t('{0}: highlights suppressed', EXTENSION_NAME);
+  suppressedStatusItem.text = `$(eye-closed) ${EXTENSION_NAME}`;
+  suppressedStatusItem.tooltip = t(
+    '{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes.',
+    EXTENSION_NAME,
+  );
+  suppressedStatusItem.command = 'conflictLens.showBaseChanges';
+  // Hidden until the active editor is actually a suppressed file.
+  context.subscriptions.push(suppressedStatusItem);
+
   const initialSettings = readWeakDecorationSettings();
   const weakDecorations = new WeakDecorationCoordinator(
     initialSettings,
@@ -170,6 +192,7 @@ export function activate(context: vscode.ExtensionContext): void {
   runtime = {
     logChannel,
     statusBarItem,
+    suppressedStatusItem,
     weakDecorations,
     fileDecorations,
     conflictPreviews,
@@ -660,20 +683,20 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
   const activeEditor = vscode.window.activeTextEditor;
   const editorResults = await Promise.all(
     editors.map((editor) =>
-      applyToEditor(editor, inputs).then((hasHighlights) => ({
+      applyToEditor(editor, inputs).then((outcome) => ({
         editor,
-        hasHighlights,
+        outcome,
       })),
     ),
   );
 
-  // Only touch the context key when the active editor was among the ones
-  // we just refreshed. If the user is editing a buffer while focused on
-  // a different editor, the focused editor's state is owned by another
+  // Only touch the active-editor indicators when the active editor was among
+  // the ones we just refreshed. If the user is editing a buffer while focused
+  // on a different editor, the focused editor's state is owned by another
   // refresh path and must not be overwritten here.
   const activeResult = editorResults.find((r) => r.editor === activeEditor);
   if (activeResult !== undefined) {
-    void setHasHighlightsContext(activeResult.hasHighlights);
+    applyActiveOutcome(activeResult.outcome);
   }
 }
 
@@ -687,7 +710,7 @@ async function refreshDecorationsNow(): Promise<void> {
       weakDecorations.clear(editor);
     }
     fileDecorations.clear();
-    void setHasHighlightsContext(false);
+    applyActiveOutcome('clean');
   };
 
   if (!isEnabled() || currentState.kind !== 'live') {
@@ -714,75 +737,110 @@ async function refreshDecorationsNow(): Promise<void> {
     largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
 
-  const activeEditor = vscode.window.activeTextEditor;
-  const [editorResults] = await Promise.all([
-    Promise.all(
-      editors.map((editor) =>
-        applyToEditor(editor, inputs).then((hasHighlights) => ({
-          editor,
-          hasHighlights,
-        })),
-      ),
-    ),
-    fileDecorations
-      .refresh({
-        runner: inputs.runner,
-        repoRootPath: inputs.repoRootPath,
-        baseBranch: inputs.baseBranch,
-        mergeBaseSha,
-      })
-      .catch((err) => {
-        runtime?.logChannel.warn(
-          `fileDecorations.refresh failed: ${stringifyError(err)}`,
-        );
-      }),
-  ]);
+  // Sequence: populate the changed-files set first so that the
+  // per-editor pre-filter in `applyToEditor` can skip git work for
+  // files the base has not touched. The post-fetch case (where every
+  // base-diff cache entry was just invalidated) is where this matters
+  // most — without the pre-filter, every visible editor would spawn a
+  // `git diff` in parallel.
+  try {
+    await fileDecorations.refresh({
+      runner: inputs.runner,
+      repoRootPath: inputs.repoRootPath,
+      baseBranch: inputs.baseBranch,
+      mergeBaseSha,
+    });
+  } catch (err) {
+    runtime?.logChannel.warn(
+      `fileDecorations.refresh failed: ${stringifyError(err)}`,
+    );
+  }
 
-  // The right-click menu items are gated on the *active* editor having
-  // highlights, so resolve that editor's result out of the batch.
-  const activeHasHighlights =
-    editorResults.find((r) => r.editor === activeEditor)?.hasHighlights ?? false;
-  void setHasHighlightsContext(activeHasHighlights);
+  const activeEditor = vscode.window.activeTextEditor;
+  const editorResults = await Promise.all(
+    editors.map((editor) =>
+      applyToEditor(editor, inputs).then((outcome) => ({
+        editor,
+        outcome,
+      })),
+    ),
+  );
+
+  // The right-click menu and the suppression indicator are gated on the
+  // *active* editor's outcome, so resolve that editor's result out of the
+  // batch.
+  const activeOutcome =
+    editorResults.find((r) => r.editor === activeEditor)?.outcome ?? 'clean';
+  applyActiveOutcome(activeOutcome);
 }
 
 /**
- * Track whether the active editor currently shows weak highlights so the
- * editor right-click menu can hide "Preview Conflict" / "Show Base Branch
- * Changes" where they would do nothing. Mirrored into a VSCode context key
- * because `when` clauses can only read context keys, not extension state.
+ * Reflect the active editor's highlight outcome into the two UI surfaces
+ * that depend on it:
+ *  - `conflictLens.hasHighlights` context key — gates the editor right-click
+ *    menu ("Preview Conflict" / "Show Base Branch Changes"), which only makes
+ *    sense when highlights are actually shown. Mirrored into a context key
+ *    because `when` clauses can only read context keys, not extension state.
+ *  - the suppression status-bar item — shown only when the file is changed
+ *    but its highlights were deliberately withheld, so the user can tell that
+ *    apart from a genuinely unchanged file.
  */
 let lastHasHighlights: boolean | undefined;
-async function setHasHighlightsContext(value: boolean): Promise<void> {
-  if (value === lastHasHighlights) return;
-  lastHasHighlights = value;
-  await vscode.commands.executeCommand(
-    'setContext',
-    'conflictLens.hasHighlights',
-    value,
-  );
+function applyActiveOutcome(outcome: HighlightOutcome): void {
+  const hasHighlights = outcome === 'highlighted';
+  if (hasHighlights !== lastHasHighlights) {
+    lastHasHighlights = hasHighlights;
+    void vscode.commands.executeCommand(
+      'setContext',
+      'conflictLens.hasHighlights',
+      hasHighlights,
+    );
+  }
+  const item = runtime?.suppressedStatusItem;
+  if (item) {
+    if (outcome === 'suppressed') item.show();
+    else item.hide();
+  }
 }
 
 /**
  * Validate the editor's document path against the repo and dispatch the
- * weak coordinator. Returns whether the editor ended up with at least one
- * weak highlight — used to drive the `conflictLens.hasHighlights` context
- * key that gates the editor right-click menu.
+ * weak coordinator. Returns the editor's highlight outcome, used to drive
+ * the `conflictLens.hasHighlights` context key (right-click menu) and the
+ * suppression status-bar indicator. Editors that are out of scope count as
+ * `clean` — no highlights, nothing suppressed.
  */
 async function applyToEditor(
   editor: vscode.TextEditor,
   inputs: WeakHighlightInputs,
-): Promise<boolean> {
-  if (!runtime) return false;
-  const { weakDecorations } = runtime;
+): Promise<HighlightOutcome> {
+  if (!runtime) return 'clean';
+  const { weakDecorations, fileDecorations } = runtime;
   const doc = editor.document;
   if (doc.uri.scheme !== 'file' || doc.isUntitled) {
     weakDecorations.clear(editor);
-    return false;
+    return 'clean';
   }
   const normalized = await resolveRepoRelativePath(doc, inputs.repoRootPath);
   if (normalized === undefined) {
     weakDecorations.clear(editor);
-    return false;
+    return 'clean';
+  }
+
+  // If the changed-files set is already populated for the current
+  // (base, mergeBase) pair and this file is not in it, the base has
+  // demonstrably not touched it. Skip the entire pipeline rather than
+  // spawning `git diff` only to discover an empty hunk list. `undefined`
+  // means the set has not been refreshed yet for this pair, in which
+  // case we fall through and let the normal pipeline run + cache.
+  const baseChange = fileDecorations.hasBaseChange(
+    inputs.baseBranch,
+    inputs.mergeBaseSha,
+    normalized,
+  );
+  if (baseChange === false) {
+    weakDecorations.clear(editor);
+    return 'clean';
   }
 
   return weakDecorations.update({ editor, relativeFilePath: normalized, inputs });

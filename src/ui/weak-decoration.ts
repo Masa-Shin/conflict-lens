@@ -68,7 +68,7 @@ const BASE_DIFF_CACHE_MAX_ENTRY_BYTES = 4 * 1024 * 1024;
  * cap (~2M chars at `length * 2`) so every file we *do* process stays
  * cacheable.
  */
-const MAX_HIGHLIGHT_LINES = 20_000;
+const MAX_HIGHLIGHT_LINES = 15_000;
 const MAX_HIGHLIGHT_CHARS = 1_500_000;
 
 function sizeOfBaseDiff(entry: BaseDiff): number {
@@ -91,6 +91,36 @@ export interface UpdateRequest {
 }
 
 /**
+ * Outcome of an `update` for the active editor:
+ *  - `highlighted` — at least one weak highlight was applied.
+ *  - `clean` — the file is unchanged on the base side (nothing to show).
+ *  - `suppressed` — the file *is* changed on the base side, but highlights
+ *    were withheld (too large to be hand-written, or more hunks than
+ *    `largeFileHunkThreshold`). Callers surface this so the user can tell
+ *    "no highlights" apart from "highlights deliberately off".
+ */
+export type HighlightOutcome = 'highlighted' | 'clean' | 'suppressed';
+
+/**
+ * Cached unit of work. `ranges` drives the decorations; `suppressed`
+ * records that the empty `ranges` is a deliberate withholding rather than
+ * a genuinely clean file, so it survives cache hits.
+ */
+interface ComputedRanges {
+  readonly ranges: WeakHighlightRange[];
+  readonly suppressed: boolean;
+}
+
+function sizeOfComputed(result: ComputedRanges): number {
+  return sizeOfRanges(result.ranges) + 8;
+}
+
+function outcomeOf(result: ComputedRanges): HighlightOutcome {
+  if (result.ranges.length > 0) return 'highlighted';
+  return result.suppressed ? 'suppressed' : 'clean';
+}
+
+/**
  * Owns the single `TextEditorDecorationType` for weak highlights, plus the
  * LRU cache of computed ranges and the in-flight cancellation map.
  *
@@ -106,11 +136,11 @@ export interface UpdateRequest {
  */
 interface InflightEntry {
   readonly controller: AbortController;
-  readonly promise: Promise<WeakHighlightRange[]>;
+  readonly promise: Promise<ComputedRanges>;
 }
 
 export class WeakDecorationCoordinator implements vscode.Disposable {
-  private readonly cache: ByteLruCache<string, WeakHighlightRange[]>;
+  private readonly cache: ByteLruCache<string, ComputedRanges>;
   /**
    * Cache of base-side work keyed on `(base, mergeBaseSha, threshold,
    * file)` — none of which move when the user types. A cache hit means
@@ -143,7 +173,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     initialSettings: WeakDecorationSettings,
     baseBranchLabel: string,
   ) {
-    this.cache = new ByteLruCache(CACHE_MAX_BYTES, CACHE_MAX_ENTRY_BYTES, sizeOfRanges);
+    this.cache = new ByteLruCache(CACHE_MAX_BYTES, CACHE_MAX_ENTRY_BYTES, sizeOfComputed);
     this.baseDiffCache = new ByteLruCache(
       BASE_DIFF_CACHE_MAX_BYTES,
       BASE_DIFF_CACHE_MAX_ENTRY_BYTES,
@@ -161,21 +191,21 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
    * document is still at the version we started with; otherwise the
    * buffer has moved on and the result is discarded.
    */
-  async update(request: UpdateRequest): Promise<boolean> {
+  async update(request: UpdateRequest): Promise<HighlightOutcome> {
     const { editor, relativeFilePath, inputs } = request;
     const document = editor.document;
     const startVersion = document.version;
-    const ranges = await this.computeRanges(relativeFilePath, inputs, document);
-    if (this.disposed) return false;
-    // If the buffer moved on we skip the apply, but the computed ranges are
-    // still the best available signal for "does this file have highlights"
-    // (the visible decorations are from a near-identical version) — a fresh
+    const result = await this.computeRanges(relativeFilePath, inputs, document);
+    if (this.disposed) return 'clean';
+    // If the buffer moved on we skip the apply, but the computed result is
+    // still the best available signal for the active-editor outcome (the
+    // visible decorations are from a near-identical version) — a fresh
     // refresh for the new version is already on its way.
     if (document.isClosed || document.version !== startVersion) {
-      return ranges.length > 0;
+      return outcomeOf(result);
     }
-    this.applyRanges(editor, ranges);
-    return ranges.length > 0;
+    this.applyRanges(editor, result.ranges);
+    return outcomeOf(result);
   }
 
   /**
@@ -187,7 +217,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     relativeFilePath: string,
     inputs: WeakHighlightInputs,
     document: vscode.TextDocument,
-  ): Promise<WeakHighlightRange[]> {
+  ): Promise<ComputedRanges> {
     const startVersion = document.version;
     const cacheKey = cacheKeyFor(relativeFilePath, inputs, startVersion);
 
@@ -201,11 +231,12 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
         document.lineCount > MAX_HIGHLIGHT_LINES ||
         rightContent.length > MAX_HIGHLIGHT_CHARS
       ) {
-        // Too large to be hand-written; skip the git-side work. Cache the
-        // empty result so a same-version re-entry stays free per guarantee 2.
-        const empty: WeakHighlightRange[] = [];
-        this.cache.set(cacheKey, empty);
-        return empty;
+        // Too large to be hand-written; skip the git-side work. Mark it
+        // suppressed (not clean) so the UI can flag that highlights were
+        // withheld, and cache it so a same-version re-entry stays free.
+        const result: ComputedRanges = { ranges: [], suppressed: true };
+        this.cache.set(cacheKey, result);
+        return result;
       }
       entry = this.startCompute(
         cacheKey,
@@ -219,7 +250,9 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     try {
       return await entry.promise;
     } catch (err) {
-      if (entry.controller.signal.aborted || this.disposed) return [];
+      if (entry.controller.signal.aborted || this.disposed) {
+        return { ranges: [], suppressed: false };
+      }
       throw err;
     }
   }
@@ -242,20 +275,23 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
   ): InflightEntry {
     const controller = new AbortController();
     const promise = this.getBaseDiff(inputs, relativeFilePath, controller.signal).then(
-      (baseDiff) => applyBaseDiffToBuffer(baseDiff, rightContent),
+      (baseDiff): ComputedRanges => ({
+        ranges: applyBaseDiffToBuffer(baseDiff, rightContent),
+        suppressed: baseDiff.suppressed,
+      }),
     );
     const entry: InflightEntry = { controller, promise };
     this.inflight.set(cacheKey, entry);
 
     void promise
-      .then((ranges) => {
+      .then((result) => {
         // Only populate the cache if the result is still valid. Caching
         // a result computed against a now-stale buffer would be served
         // to other editors on a future cache hit even after the user
         // has typed past it.
         if (controller.signal.aborted || this.disposed) return;
         if (document.isClosed || document.version !== startVersion) return;
-        this.cache.set(cacheKey, ranges);
+        this.cache.set(cacheKey, result);
       })
       .catch(() => {
         // Errors are surfaced to each awaiter individually; here we only

@@ -36,6 +36,12 @@ export class FileDecorationCoordinator
   private changed = new Set<string>();
   private settings: FileDecorationSettings;
   private baseBranchLabel = '(no base)';
+  /**
+   * Memoized decoration. Its content depends only on `settings` and
+   * `baseBranchLabel`, so it is built once and reused across every
+   * changed node until `updateSettings` invalidates it.
+   */
+  private cachedDecoration: vscode.FileDecoration | undefined;
   /** Repo root for URI→path conversion. Undefined when no inputs yet. */
   private repoRootPath: string | undefined;
   private lastRefreshKey: string | undefined;
@@ -53,11 +59,32 @@ export class FileDecorationCoordinator
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
     if (this.disposed) return undefined;
+    if (this.changed.size === 0) return undefined;
     if (uri.scheme !== 'file' || !this.repoRootPath) return undefined;
     const rel = relativeIfWithin(uri.fsPath, this.repoRootPath);
     if (rel === undefined) return undefined;
     if (this.changed.has(rel)) return this.buildChangedDecoration();
     return undefined;
+  }
+
+  /**
+   * Whether the base branch has touched `relativeFilePath` between the
+   * merge-base and the base tip, given the caller's view of
+   * `(baseBranch, mergeBaseSha)`. Returns `undefined` when the
+   * changed-files set has not yet been populated for that pair —
+   * callers must treat that as "unknown" and fall back to their normal
+   * pipeline rather than assume "not changed."
+   *
+   * Used by the weak-highlight pipeline as a pre-filter so files the
+   * base has not modified can skip the `git diff` spawn entirely.
+   */
+  hasBaseChange(
+    baseBranch: string,
+    mergeBaseSha: string,
+    relativeFilePath: string,
+  ): boolean | undefined {
+    if (this.lastRefreshKey !== `${baseBranch}|${mergeBaseSha}`) return undefined;
+    return this.changed.has(relativeFilePath);
   }
 
   /**
@@ -108,6 +135,7 @@ export class FileDecorationCoordinator
     if (this.disposed) return;
     this.settings = next;
     this.baseBranchLabel = baseBranchLabel;
+    this.cachedDecoration = undefined;
     this.didChangeEmitter.fire(undefined);
   }
 
@@ -117,10 +145,10 @@ export class FileDecorationCoordinator
   }
 
   private buildChangedDecoration(): vscode.FileDecoration {
-    return {
+    return (this.cachedDecoration ??= {
       badge: this.settings.showBadges ? '≠' : undefined,
       tooltip: t('Conflict Lens: changed by {0}', this.baseBranchLabel),
       propagate: true,
-    };
+    });
   }
 }

@@ -39,8 +39,13 @@ export interface MergeFileResult {
  *
  * Exit code semantics (`git merge-file(1)`):
  *  - 0 → clean
- *  - positive → number of conflicts
- *  - negative → fatal error
+ *  - 1..127 → number of conflicts (git caps the count at 127)
+ *  - anything else → fatal error. git returns -1 from C on a fatal
+ *    error, which the OS surfaces as exit status 255 (never a negative
+ *    number); a signal kill surfaces as the runner's `-1`. So the only
+ *    safe "this is a conflict count" range is 0..127, and everything
+ *    outside it must be treated as a failure — otherwise a 255 would be
+ *    mistaken for "255 conflicts" and open an empty preview.
  */
 export async function runMergeFile(
   runner: GitRunner,
@@ -79,7 +84,7 @@ export async function runMergeFile(
       { cwd: repoRootPath, signal: options.signal },
     );
 
-    if (result.exitCode < 0) {
+    if (result.timedOut || result.truncated || result.exitCode < 0 || result.exitCode > 127) {
       throw new Error(
         `git merge-file failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
       );
