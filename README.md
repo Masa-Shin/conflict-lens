@@ -170,29 +170,11 @@ git log --oneline HEAD...origin/main
 
 ### 開発環境の構築
 
-VSCodeの設定ファイルに以下を追加することで、Extension Development Host を起動し拡張機能の動作確認ができるようになります。
+以下を実行すると、ビルドした拡張機能を読み込んだ状態の VSCode が別ウィンドウで立ち上がり、動作確認ができます。
 
-※ `</path/to/conflict-lens>`には、このリポジトリの絶対パスを入れてください
-※ `</path/to/your/test-repo>`には、動作確認に使うリポジトリの絶対パスを入れてください
-
-```jsonc
-"launch": {
-  "configurations": [
-    {
-      "name": "Run Extension",
-      "type": "extensionHost",
-      "request": "launch",
-      "args": [
-        "--extensionDevelopmentPath=/path/to/conflict-lens",
-        "</path/to/your/test-repo>"
-      ],
-      "outFiles": ["</path/to/conflict-lens>/dist/**/*.js"]
-    }
-  ]
-}
+```sh
+npm run dev
 ```
-
-Extension Development Host の起動には「fn + F5」を押下してください。
 
 ## ライセンス
 
