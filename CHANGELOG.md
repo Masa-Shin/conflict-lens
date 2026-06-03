@@ -21,4 +21,3 @@ Initial pre-release.
 - `Conflict Lens: Preview Conflict` — on demand, open the predicted merge result with standard `<<<<<<<` / `=======` / `>>>>>>>` markers in a new editor.
 - `Conflict Lens: Select Base Branch`, `Refresh`, `Enable`, `Disable`, `Toggle`, `Show Output Channel`.
 - Configurable remote name (`conflictLens.remoteName`) for auto-detecting the base branch.
-- Japanese UI translation via `vscode.l10n`.
