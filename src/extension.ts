@@ -125,6 +125,16 @@ interface LiveContext {
    */
   mergeBaseSha: string | undefined;
   /**
+   * The commit `baseBranch` currently points to (its tip). Tracked
+   * alongside `mergeBaseSha` because a fast-forward of the base ref
+   * (e.g. `git fetch` picking up new upstream commits) leaves the
+   * merge-base untouched while still changing what the base-side diff
+   * produces. Detecting that movement is what triggers cache
+   * invalidation when the user is on a feature branch and the upstream
+   * advances.
+   */
+  baseTipSha: string | undefined;
+  /**
    * Long-lived `git cat-file --batch` for blob reads. Created once per
    * activation on the resolved git binary and disposed via the extension
    * context. Wrapped in `readBlob` and reused for every refresh.
@@ -279,6 +289,7 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
     baseBranch: undefined,
     baseBranchSource: undefined,
     mergeBaseSha: undefined,
+    baseTipSha: undefined,
     catFileBatch,
     readBlob,
   };
@@ -394,40 +405,48 @@ async function refreshMergeBase(): Promise<void> {
   if (currentState.kind !== 'live') return;
   const ctx = currentState.context;
   if (!ctx.baseBranch) {
-    setState((prev) => {
-      if (prev.kind !== 'live') return prev;
-      if (prev.context.mergeBaseSha === undefined) return prev;
-      return { kind: 'live', context: { ...prev.context, mergeBaseSha: undefined } };
-    });
+    if (ctx.mergeBaseSha !== undefined || ctx.baseTipSha !== undefined) {
+      setState({
+        kind: 'live',
+        context: { ...ctx, mergeBaseSha: undefined, baseTipSha: undefined },
+      });
+    }
     return;
   }
   const resolvedFor = ctx.baseBranch;
-  let sha: string | undefined;
-  try {
-    sha = await resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, resolvedFor);
-  } catch (err) {
-    runtime?.logChannel.warn(`resolveMergeBase threw: ${stringifyError(err)}`);
-    sha = undefined;
-  }
-  let shaChanged = false;
-  setState((prev) => {
-    if (prev.kind !== 'live') return prev;
-    // The base may have been switched out from under us during the await
-    // (e.g. settings change firing `refreshBaseBranch` concurrently).
-    // Writing this sha into the new base's slot would leave a stale
-    // value sitting around until the next merge-base-moving event.
-    if (prev.context.baseBranch !== resolvedFor) return prev;
-    if (prev.context.mergeBaseSha === sha) return prev;
-    shaChanged = true;
-    return { kind: 'live', context: { ...prev.context, mergeBaseSha: sha } };
+  // Resolve both SHAs in parallel. We need the base tip alongside the
+  // merge-base because a base-side fast-forward (the typical `git fetch`
+  // outcome) shifts the tip without moving the merge-base, and the
+  // base-diff is a function of both endpoints.
+  const [mergeBaseSha, baseTipSha] = await Promise.all([
+    resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, resolvedFor).catch(
+      (err) => {
+        runtime?.logChannel.warn(`resolveMergeBase threw: ${stringifyError(err)}`);
+        return undefined;
+      },
+    ),
+    resolveRefToCommit(ctx.environment.runner, ctx.repository.rootPath, resolvedFor).catch(
+      (err) => {
+        runtime?.logChannel.warn(`resolveRefToCommit threw: ${stringifyError(err)}`);
+        return undefined;
+      },
+    ),
+  ]);
+  // Re-read state after the await: a concurrent `refreshBaseBranch` may
+  // have switched the base out from under us, in which case our SHAs
+  // attach to an old base and must be discarded.
+  if (currentState.kind !== 'live') return;
+  const after = currentState.context;
+  if (after.baseBranch !== resolvedFor) return;
+  if (after.mergeBaseSha === mergeBaseSha && after.baseTipSha === baseTipSha) return;
+  setState({
+    kind: 'live',
+    context: { ...after, mergeBaseSha, baseTipSha },
   });
-  if (shaChanged) {
-    // Base tip (or HEAD) moved enough to shift the merge-base. Every
-    // cached base-diff was computed against the previous SHA and is now
-    // stale; drop them so the next refresh recomputes against the new
-    // merge-base instead of re-serving the old highlights.
-    runtime?.weakDecorations.invalidateAll();
-  }
+  // Either the merge-base or the base tip moved, so every cached
+  // base-diff was computed against now-stale endpoints. Drop them so the
+  // next refresh recomputes from the new positions.
+  runtime?.weakDecorations.invalidateAll();
 }
 
 async function refreshBaseBranch(): Promise<void> {
@@ -463,6 +482,7 @@ async function refreshBaseBranch(): Promise<void> {
           baseBranch: resolution.baseBranch,
           baseBranchSource: resolution.source,
           mergeBaseSha: undefined,
+          baseTipSha: undefined,
         },
       };
     });
@@ -662,10 +682,10 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
   const ctx = currentState.context;
   if (isStateBlockingHighlights(ctx.gitState) || !ctx.baseBranch) return;
   if (document.isClosed) return;
-  // Without a cached merge-base nothing downstream can produce useful
+  // Without cached base SHAs nothing downstream can produce useful
   // ranges, but typing is not where we want to spawn `git merge-base`
-  // — base/HEAD events refresh it for us. Skip silently.
-  if (!ctx.mergeBaseSha) return;
+  // — base/HEAD events refresh them for us. Skip silently.
+  if (!ctx.mergeBaseSha || !ctx.baseTipSha) return;
 
   const editors = vscode.window.visibleTextEditors.filter(
     (e) => e.document === document,
@@ -677,6 +697,7 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
     repoRootPath: ctx.repository.rootPath,
     baseBranch: ctx.baseBranch,
     mergeBaseSha: ctx.mergeBaseSha,
+    baseTipSha: ctx.baseTipSha,
     readBlob: ctx.readBlob,
   };
 
@@ -722,17 +743,19 @@ async function refreshDecorationsNow(): Promise<void> {
     clearAll();
     return;
   }
-  if (!ctx.mergeBaseSha) {
+  if (!ctx.mergeBaseSha || !ctx.baseTipSha) {
     clearAll();
     return;
   }
   const mergeBaseSha = ctx.mergeBaseSha;
+  const baseTipSha = ctx.baseTipSha;
 
   const inputs: WeakHighlightInputs = {
     runner: ctx.environment.runner,
     repoRootPath: ctx.repository.rootPath,
     baseBranch: ctx.baseBranch,
     mergeBaseSha,
+    baseTipSha,
     readBlob: ctx.readBlob,
   };
 
@@ -748,6 +771,7 @@ async function refreshDecorationsNow(): Promise<void> {
       repoRootPath: inputs.repoRootPath,
       baseBranch: inputs.baseBranch,
       mergeBaseSha,
+      baseTipSha,
     });
   } catch (err) {
     runtime?.logChannel.warn(
@@ -827,14 +851,16 @@ async function applyToEditor(
   }
 
   // If the changed-files set is already populated for the current
-  // (base, mergeBase) pair and this file is not in it, the base has
-  // demonstrably not touched it. Skip the entire pipeline rather than
-  // spawning `git diff` only to discover an empty hunk list. `undefined`
-  // means the set has not been refreshed yet for this pair, in which
-  // case we fall through and let the normal pipeline run + cache.
+  // (base, mergeBase, baseTip) trio and this file is not in it, the
+  // base has demonstrably not touched it. Skip the entire pipeline
+  // rather than spawning `git diff` only to discover an empty hunk
+  // list. `undefined` means the set has not been refreshed yet for
+  // this trio, in which case we fall through and let the normal
+  // pipeline run + cache.
   const baseChange = fileDecorations.hasBaseChange(
     inputs.baseBranch,
     inputs.mergeBaseSha,
+    inputs.baseTipSha,
     normalized,
   );
   if (baseChange === false) {
@@ -1036,26 +1062,23 @@ async function handleRemoteBehind(
   const baseBranch = ctx.baseBranch;
   if (!baseBranch) return;
 
-  // Prompt at most once per distinct remote SHA so the user is not
-  // re-asked on every timer tick. The modal carries a single OK button
-  // (VS Code adds an implicit Cancel); accepting it fetches *only* the
-  // base branch (not the whole remote) and refreshes decorations.
+  // Notify at most once per distinct remote SHA so the user is not
+  // re-prompted on every timer tick. A non-modal toast carries a single
+  // "Fetch" action; clicking it fetches *only* the base branch (not the
+  // whole remote) and refreshes decorations. Dismissing the toast leaves
+  // the dedupe key set, so the next prompt fires only when the remote
+  // moves to a different SHA.
   if (lastNotifiedRemoteSha === remoteSha) return;
   lastNotifiedRemoteSha = remoteSha;
   runtime?.logChannel.info(
-    `Remote moved (${remoteSha.slice(0, 8)}); prompting for ${baseBranch}.`,
+    `Remote moved (${remoteSha.slice(0, 8)}); notifying for ${baseBranch}.`,
   );
-  const okLabel = t('OK');
+  const fetchLabel = t('Fetch');
   const choice = await vscode.window.showInformationMessage(
-    t(
-      '{0}: {1} has moved upstream. Fetch the base branch now?',
-      EXTENSION_NAME,
-      baseBranch,
-    ),
-    { modal: true },
-    okLabel,
+    t('{0}: {1} has moved upstream.', EXTENSION_NAME, baseBranch),
+    fetchLabel,
   );
-  if (choice !== okLabel) return;
+  if (choice !== fetchLabel) return;
   const ok = await tryFetchBaseOnly(ctx, baseBranch);
   if (ok) {
     lastNotifiedRemoteSha = undefined;

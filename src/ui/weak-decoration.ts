@@ -32,6 +32,15 @@ export interface WeakHighlightInputs {
   readonly repoRootPath: string;
   readonly baseBranch: string;
   readonly mergeBaseSha: string;
+  /**
+   * Tip of the base branch. The base-side diff
+   * `git diff <mergeBaseSha> <baseBranch>` produces different output as
+   * soon as this moves (e.g. a `git fetch` fast-forwards the base), so
+   * the value is part of the cache key. The base-branch *name* is
+   * unchanged in that scenario; without the tip SHA the cache would
+   * return stale hunks until the next merge-base shift.
+   */
+  readonly baseTipSha: string;
   readonly readBlob: BlobReader;
 }
 
@@ -73,9 +82,10 @@ function sizeOfBaseDiff(entry: BaseDiff): number {
 function baseDiffKey(
   baseBranch: string,
   mergeBaseSha: string,
+  baseTipSha: string,
   relativeFilePath: string,
 ): string {
-  return `${baseBranch}|${mergeBaseSha}|${relativeFilePath}`;
+  return `${baseBranch}|${mergeBaseSha}|${baseTipSha}|${relativeFilePath}`;
 }
 
 export interface UpdateRequest {
@@ -315,6 +325,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     const key = baseDiffKey(
       inputs.baseBranch,
       inputs.mergeBaseSha,
+      inputs.baseTipSha,
       relativeFilePath,
     );
     const cached = this.baseDiffCache.get(key);

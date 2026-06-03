@@ -19,6 +19,7 @@ function makeInputs(): FileDecorationInputs {
     repoRootPath: '/tmp/repo',
     baseBranch: 'origin/main',
     mergeBaseSha: 'mb123',
+    baseTipSha: 'tip123',
   };
 }
 
@@ -92,29 +93,31 @@ describe('FileDecorationCoordinator', () => {
 
   describe('hasBaseChange', () => {
     it('returns undefined before the changed set has been populated', () => {
-      expect(coord.hasBaseChange('origin/main', 'mb123', 'a.txt')).toBeUndefined();
+      expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt')).toBeUndefined();
     });
 
     it('returns true / false for a populated set at the matching key', async () => {
       listChanged.mockResolvedValueOnce(['a.txt']);
       await coord.refresh(makeInputs());
-      expect(coord.hasBaseChange('origin/main', 'mb123', 'a.txt')).toBe(true);
-      expect(coord.hasBaseChange('origin/main', 'mb123', 'b.txt')).toBe(false);
+      expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt')).toBe(true);
+      expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'b.txt')).toBe(false);
     });
 
-    it('returns undefined when the (base, mergeBase) does not match the cached key', async () => {
+    it('returns undefined when any of (base, mergeBase, baseTip) does not match the cached key', async () => {
       listChanged.mockResolvedValueOnce(['a.txt']);
       await coord.refresh(makeInputs());
       // Caller asking about a different merge-base — set is stale for them.
-      expect(coord.hasBaseChange('origin/main', 'mb-different', 'a.txt')).toBeUndefined();
-      expect(coord.hasBaseChange('origin/master', 'mb123', 'a.txt')).toBeUndefined();
+      expect(coord.hasBaseChange('origin/main', 'mb-different', 'tip123', 'a.txt')).toBeUndefined();
+      expect(coord.hasBaseChange('origin/master', 'mb123', 'tip123', 'a.txt')).toBeUndefined();
+      // Same merge-base but the base tip moved (e.g. a fetch fast-forwarded it).
+      expect(coord.hasBaseChange('origin/main', 'mb123', 'tip-different', 'a.txt')).toBeUndefined();
     });
 
     it('returns undefined after clear() drops the cached set', async () => {
       listChanged.mockResolvedValueOnce(['a.txt']);
       await coord.refresh(makeInputs());
       coord.clear();
-      expect(coord.hasBaseChange('origin/main', 'mb123', 'a.txt')).toBeUndefined();
+      expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt')).toBeUndefined();
     });
   });
 

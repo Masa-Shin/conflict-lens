@@ -15,8 +15,6 @@ describe('SECURE_ARGS', () => {
 
   it.each([
     ['core.pager=cat'],
-    ['core.sshCommand='],
-    ['core.askpass='],
     ['core.editor=false'],
     ['core.fsmonitor=false'],
     ['gpg.program=false'],
@@ -34,12 +32,17 @@ describe('SECURE_ARGS', () => {
     expect(SECURE_ARGS).toContain(`core.hooksPath=${expected}`);
   });
 
-  it('does NOT include credential.helper= so OS keychain auth keeps working', () => {
-    // Suppressing the helper for every command breaks HTTPS auth for
-    // PAT-protected remotes. Local-only commands do not invoke the helper
-    // anyway, so omitting the override is safe. See spec §4.1 (note).
-    const helperOverride = SECURE_ARGS.find((arg) => arg.startsWith('credential.helper'));
-    expect(helperOverride).toBeUndefined();
+  it.each([
+    ['credential.helper'],
+    // core.sshCommand and core.askpass were previously forced to empty
+    // here as "security hardening", but doing so breaks every git network
+    // command — git tries to fork an empty-string program and fails with
+    // `cannot run :` / `unable to fork`. Leave them at user/system defaults.
+    ['core.sshCommand'],
+    ['core.askpass'],
+  ])('does NOT override %s so network commands keep working', (key) => {
+    const override = SECURE_ARGS.find((arg) => arg.startsWith(`${key}=`));
+    expect(override).toBeUndefined();
   });
 });
 

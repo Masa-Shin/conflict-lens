@@ -16,6 +16,12 @@ export interface FileDecorationInputs {
   readonly repoRootPath: string;
   readonly baseBranch: string;
   readonly mergeBaseSha: string;
+  /**
+   * Tip of the base branch. Included in the refresh key so that a
+   * base-side fast-forward (which leaves the merge-base alone) still
+   * triggers a re-fetch of the changed-files set.
+   */
+  readonly baseTipSha: string;
 }
 
 /**
@@ -81,9 +87,12 @@ export class FileDecorationCoordinator
   hasBaseChange(
     baseBranch: string,
     mergeBaseSha: string,
+    baseTipSha: string,
     relativeFilePath: string,
   ): boolean | undefined {
-    if (this.lastRefreshKey !== `${baseBranch}|${mergeBaseSha}`) return undefined;
+    if (this.lastRefreshKey !== `${baseBranch}|${mergeBaseSha}|${baseTipSha}`) {
+      return undefined;
+    }
     return this.changed.has(relativeFilePath);
   }
 
@@ -95,7 +104,7 @@ export class FileDecorationCoordinator
    */
   async refresh(inputs: FileDecorationInputs): Promise<void> {
     if (this.disposed) return;
-    const key = `${inputs.baseBranch}|${inputs.mergeBaseSha}`;
+    const key = `${inputs.baseBranch}|${inputs.mergeBaseSha}|${inputs.baseTipSha}`;
     if (key === this.lastRefreshKey) return;
 
     const changedArr = await listChangedFilesOnBase(

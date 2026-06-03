@@ -66,6 +66,7 @@ function makeInputs(): WeakHighlightInputs {
     repoRootPath: '/tmp/repo',
     baseBranch: 'origin/main',
     mergeBaseSha: 'mb123',
+    baseTipSha: 'tip123',
     readBlob: vi.fn(),
   };
 }

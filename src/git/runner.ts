@@ -75,19 +75,21 @@ const NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null';
  * keys in .git/config so that opening a hostile repository cannot trigger
  * arbitrary code execution. See spec §4.1 共通プレフィクス and §5.5.
  *
- * NOTE: `credential.helper=` is intentionally *not* included here. Suppressing
- * the helper would make `git ls-remote` — the only network-bound command
- * this extension issues directly — fail silently against PAT-protected
- * HTTPS remotes. Local-only commands used by this extension
- * (diff / show / merge-file / rev-parse / cat-file /
- * for-each-ref / merge-base / check-attr) do not invoke the credential
- * helper, so leaving it untouched is safe for those too.
+ * NOTE: `credential.helper=`, `core.sshCommand=`, and `core.askpass=` are
+ * intentionally *not* included. Overriding them to empty would silently
+ * break `git ls-remote` (the only network-bound command this extension
+ * issues directly) against PAT-protected HTTPS and SSH remotes alike —
+ * forking the empty string surfaces as `error: cannot run :` / `fatal:
+ * unable to fork`. The remaining hardening (no pager, no fsmonitor,
+ * editor disabled, hooks routed to /dev/null, ext/file protocols
+ * restricted) is enough to neutralize the in-repo configuration vectors
+ * we care about, and the still-set `GIT_TERMINAL_PROMPT=0` /
+ * `GIT_ASKPASS=true` / `SSH_ASKPASS=true` in SECURE_ENV continue to
+ * keep interactive credential prompts from popping up.
  */
 export const SECURE_ARGS: readonly string[] = Object.freeze([
   '--no-pager',
   '-c', 'core.pager=cat',
-  '-c', 'core.sshCommand=',
-  '-c', 'core.askpass=',
   '-c', 'core.editor=false',
   '-c', 'core.fsmonitor=false',
   '-c', `core.hooksPath=${NULL_DEVICE}`,
