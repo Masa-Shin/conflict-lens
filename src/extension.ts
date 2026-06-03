@@ -171,7 +171,10 @@ export function activate(context: vscode.ExtensionContext): void {
     99,
   );
   suppressedStatusItem.name = t('{0}: highlights suppressed', EXTENSION_NAME);
-  suppressedStatusItem.text = `$(eye-closed) ${EXTENSION_NAME}`;
+  suppressedStatusItem.text = t(
+    '$(eye-closed) {0}: too large to highlight',
+    EXTENSION_NAME,
+  );
   suppressedStatusItem.tooltip = t(
     '{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes.',
     EXTENSION_NAME,

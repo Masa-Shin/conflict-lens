@@ -55,6 +55,7 @@
   "detached": "detached",
   "bisecting": "bisecting",
   "{0}: highlights suppressed": "{0}: highlights suppressed",
+  "$(eye-closed) {0}: too large to highlight": "$(eye-closed) {0}: too large to highlight",
   "{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes.": "{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes.",
   "{0}: {1} is a binary file; nothing to compare as text.": "{0}: {1} is a binary file; nothing to compare as text.",
   "not in the current branch": "not in the current branch",
