@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   classifyHunk,
+  isPathBinaryAgainstRef,
+  numstatReportsBinary,
   parseHunkHeaders,
   resolveHeadSha,
   resolveMergeBase,
@@ -115,6 +117,30 @@ describe('parseHunkHeaders', () => {
   });
 });
 
+describe('numstatReportsBinary', () => {
+  it('returns false for empty output', () => {
+    expect(numstatReportsBinary('')).toBe(false);
+  });
+
+  it('returns false for a textual change', () => {
+    expect(numstatReportsBinary('12\t3\tsrc/foo.ts\n')).toBe(false);
+  });
+
+  it('returns true when added / deleted are both "-"', () => {
+    expect(numstatReportsBinary('-\t-\tassets/logo.png\n')).toBe(true);
+  });
+
+  it('detects a binary record mixed with textual ones', () => {
+    const out = ['4\t0\ta.txt', '-\t-\tb.bin', '1\t1\tc.txt'].join('\n');
+    expect(numstatReportsBinary(out)).toBe(true);
+  });
+
+  it('does not treat a path containing a tab as a binary marker', () => {
+    // Path with a literal tab; only the first two tabs are field separators.
+    expect(numstatReportsBinary('3\t1\tweird\tname.txt\n')).toBe(false);
+  });
+});
+
 describe('classifyHunk', () => {
   it.each([
     [{ oldStart: 1, oldCount: 2, newStart: 1, newCount: 2 }, 'change'],
@@ -203,5 +229,42 @@ describe('resolveMergeBase / resolveHeadSha (integration)', () => {
     await run('git', ['tag', '-a', 'v1', '-m', 'release'], fx.repo);
     const result = await resolveRefToCommit(runner, fx.repo, 'v1');
     expect(result).toBe(fx.headOnFeature);
+  });
+
+  it('isPathBinaryAgainstRef is false for a textual file changed on base', async () => {
+    const fx = await makeBranchedRepo();
+    teardown.push(fx.repo);
+    // file.txt is 'a\nc\n' on main vs 'a\nb\n' on the checked-out feature.
+    const result = await isPathBinaryAgainstRef(runner, fx.repo, 'main', 'file.txt');
+    expect(result).toBe(false);
+  });
+
+  it('isPathBinaryAgainstRef is true when the file is binary', async () => {
+    const fx = await makeBranchedRepo();
+    teardown.push(fx.repo);
+    // Track a binary blob (embedded NUL) with different content on each
+    // branch, so base↔worktree differ and git emits the `-\t-` numstat row.
+    await run('git', ['checkout', '-q', 'main'], fx.repo);
+    fs.writeFileSync(path.join(fx.repo, 'blob.bin'), Buffer.from([0, 1, 2, 0, 255]));
+    await run('git', ['add', 'blob.bin'], fx.repo);
+    await run('git', ['commit', '-q', '-m', 'add binary on main'], fx.repo);
+    await run('git', ['checkout', '-q', 'feature'], fx.repo);
+    fs.writeFileSync(path.join(fx.repo, 'blob.bin'), Buffer.from([9, 0, 9, 0, 9]));
+    await run('git', ['add', 'blob.bin'], fx.repo);
+    await run('git', ['commit', '-q', '-m', 'add binary on feature'], fx.repo);
+    const result = await isPathBinaryAgainstRef(runner, fx.repo, 'main', 'blob.bin');
+    expect(result).toBe(true);
+  });
+
+  it('isPathBinaryAgainstRef is false for an unknown ref (non-zero exit)', async () => {
+    const fx = await makeBranchedRepo();
+    teardown.push(fx.repo);
+    const result = await isPathBinaryAgainstRef(
+      runner,
+      fx.repo,
+      'origin/nope',
+      'file.txt',
+    );
+    expect(result).toBe(false);
   });
 });

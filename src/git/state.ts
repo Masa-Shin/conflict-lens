@@ -21,7 +21,19 @@ export type GitState =
   | { readonly kind: 'merging' }
   | { readonly kind: 'cherry-picking' }
   | { readonly kind: 'reverting' }
-  | { readonly kind: 'ready'; readonly detached: boolean; readonly bisecting: boolean };
+  | {
+      readonly kind: 'ready';
+      /**
+       * Resolved HEAD commit SHA at the time of detection. Carried on the
+       * state so that branch switches, commits, and amends are visible to
+       * `gitStatesEqual` — without this field they collapse to the same
+       * `{detached:false, bisecting:false}` shape and the cache /
+       * merge-base refresh chain never runs.
+       */
+      readonly headSha: string;
+      readonly detached: boolean;
+      readonly bisecting: boolean;
+    };
 
 /** Targets passed to `git rev-parse --git-path` and `fs.access` in one batch. */
 const MID_OP_PATHS = [
@@ -64,7 +76,10 @@ export async function detectGitState(
 ): Promise<GitState> {
   const { signal, onWarn } = options;
 
-  // Step 1: HEAD existence (no-commits has highest priority).
+  // Step 1: HEAD existence (no-commits has highest priority). We also
+  // capture the SHA from stdout so the resulting `ready` state carries
+  // HEAD; `gitStatesEqual` uses it to notice branch switches and commits
+  // that the (detached, bisecting) pair alone cannot detect.
   const head = await runner.run(['rev-parse', '--verify', 'HEAD'], {
     cwd: repoRootPath,
     signal,
@@ -72,6 +87,7 @@ export async function detectGitState(
   if (head.exitCode !== 0) {
     return { kind: 'no-commits' };
   }
+  const headSha = head.stdout.trim();
 
   // Step 2: resolve all marker paths in one git call.
   const pathArgs = MID_OP_PATHS.flatMap((target) => ['--git-path', target]);
@@ -129,6 +145,7 @@ export async function detectGitState(
 
   return {
     kind: 'ready',
+    headSha,
     detached,
     bisecting: markers['BISECT_LOG'],
   };

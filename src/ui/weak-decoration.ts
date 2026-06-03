@@ -33,11 +33,6 @@ export interface WeakHighlightInputs {
   readonly baseBranch: string;
   readonly mergeBaseSha: string;
   readonly readBlob: BlobReader;
-  /**
-   * Spec §3.4: suppress line decorations when the base-side diff has
-   * more than this many hunks. `0` disables the gate.
-   */
-  readonly largeFileHunkThreshold: number;
 }
 
 /** Toggleable visuals. Background color / hover always render. */
@@ -58,15 +53,15 @@ const BASE_DIFF_CACHE_MAX_BYTES = 16 * 1024 * 1024;
 const BASE_DIFF_CACHE_MAX_ENTRY_BYTES = 4 * 1024 * 1024;
 
 /**
- * Spec §3.4 companion to `largeFileHunkThreshold`. A file past either of
- * these limits is treated as generated rather than hand-written: weak
- * highlights add no value there, so we bail before any git work. Gating up
- * front (on values the editor already holds) skips the `git diff`/`git show`
- * spawn entirely and keeps the base-diff cache from thrashing on a merge-base
- * blob too large to store — which would otherwise re-spawn git on every
- * keystroke. The char limit sits well under the base-diff cache's per-entry
- * cap (~2M chars at `length * 2`) so every file we *do* process stays
- * cacheable.
+ * A file past either of these limits is treated as generated rather than
+ * hand-written: weak highlights add no value there, so we bail before any
+ * git work. Gating up front (on values the editor already holds) skips the
+ * `git diff`/`git show` spawn entirely and, just as importantly, skips the
+ * per-keystroke in-memory line diff (`buildLineMapping`, roughly O(N×D)).
+ * It also keeps the base-diff cache from thrashing on a merge-base blob too
+ * large to store. The char limit sits well under the base-diff cache's
+ * per-entry cap (~2M chars at `length * 2`) so every file we *do* process
+ * stays cacheable.
  */
 const MAX_HIGHLIGHT_LINES = 15_000;
 const MAX_HIGHLIGHT_CHARS = 1_500_000;
@@ -79,9 +74,8 @@ function baseDiffKey(
   baseBranch: string,
   mergeBaseSha: string,
   relativeFilePath: string,
-  largeFileHunkThreshold: number,
 ): string {
-  return `${baseBranch}|${mergeBaseSha}|${largeFileHunkThreshold}|${relativeFilePath}`;
+  return `${baseBranch}|${mergeBaseSha}|${relativeFilePath}`;
 }
 
 export interface UpdateRequest {
@@ -95,9 +89,9 @@ export interface UpdateRequest {
  *  - `highlighted` — at least one weak highlight was applied.
  *  - `clean` — the file is unchanged on the base side (nothing to show).
  *  - `suppressed` — the file *is* changed on the base side, but highlights
- *    were withheld (too large to be hand-written, or more hunks than
- *    `largeFileHunkThreshold`). Callers surface this so the user can tell
- *    "no highlights" apart from "highlights deliberately off".
+ *    were withheld because it is too large to be hand-written. Callers
+ *    surface this so the user can tell "no highlights" apart from
+ *    "highlights deliberately off".
  */
 export type HighlightOutcome = 'highlighted' | 'clean' | 'suppressed';
 
@@ -277,7 +271,9 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     const promise = this.getBaseDiff(inputs, relativeFilePath, controller.signal).then(
       (baseDiff): ComputedRanges => ({
         ranges: applyBaseDiffToBuffer(baseDiff, rightContent),
-        suppressed: baseDiff.suppressed,
+        // The compute path never withholds; only the up-front size gate in
+        // `computeRanges` produces a suppressed result.
+        suppressed: false,
       }),
     );
     const entry: InflightEntry = { controller, promise };
@@ -320,7 +316,6 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       inputs.baseBranch,
       inputs.mergeBaseSha,
       relativeFilePath,
-      inputs.largeFileHunkThreshold,
     );
     const cached = this.baseDiffCache.get(key);
     if (cached) return cached;
@@ -336,7 +331,6 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
           mergeBaseSha: inputs.mergeBaseSha,
           relativeFilePath,
           readBlob: inputs.readBlob,
-          largeFileHunkThreshold: inputs.largeFileHunkThreshold,
           signal,
         });
         if (!this.disposed && !signal.aborted) {

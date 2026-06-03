@@ -23,15 +23,10 @@ export interface WeakHighlightRange {
  * `(baseBranch, mergeBaseSha, relativeFilePath)` only — completely
  * independent of the editor buffer — so callers can cache this across
  * keystrokes and only re-run the buffer-dependent mapping step.
- *
- * `suppressed` is `true` when the hunk count exceeded the
- * largeFileHunkThreshold; callers should treat the file as "too noisy
- * to highlight" without re-fetching.
  */
 export interface BaseDiff {
   readonly hunks: readonly DiffHunk[];
   readonly leftContent: string;
-  readonly suppressed: boolean;
 }
 
 export interface LoadBaseDiffParams {
@@ -41,7 +36,6 @@ export interface LoadBaseDiffParams {
   readonly mergeBaseSha: string;
   readonly relativeFilePath: string;
   readonly readBlob: BlobReader;
-  readonly largeFileHunkThreshold?: number;
   readonly signal?: AbortSignal;
 }
 
@@ -62,10 +56,6 @@ export interface ComputeWeakHighlightsParams extends LoadBaseDiffParams {
  * `(baseBranch, mergeBaseSha, relativeFilePath)` and are safe to cache
  * for the lifetime of those three values — typing in the editor never
  * invalidates the result.
- *
- * Returns `suppressed: true` (with empty `hunks`) when the hunk count
- * exceeded `largeFileHunkThreshold`. The blob fetch is skipped in that
- * case since the result is going to be empty anyway.
  */
 export async function loadBaseDiff(
   params: LoadBaseDiffParams,
@@ -89,14 +79,10 @@ export async function loadBaseDiff(
     { signal },
   );
   if (hunks.length === 0) {
-    return { hunks, leftContent: '', suppressed: false };
-  }
-  const threshold = params.largeFileHunkThreshold;
-  if (typeof threshold === 'number' && threshold > 0 && hunks.length > threshold) {
-    return { hunks: [], leftContent: '', suppressed: true };
+    return { hunks, leftContent: '' };
   }
   const leftContent = await readBlob(mergeBaseSha, relativeFilePath, { signal });
-  return { hunks, leftContent, suppressed: false };
+  return { hunks, leftContent };
 }
 
 /**
@@ -108,7 +94,7 @@ export function applyBaseDiffToBuffer(
   baseDiff: BaseDiff,
   rightContent: string,
 ): WeakHighlightRange[] {
-  if (baseDiff.suppressed || baseDiff.hunks.length === 0) return [];
+  if (baseDiff.hunks.length === 0) return [];
   const mapping = buildLineMapping(baseDiff.leftContent, rightContent);
   const ranges: WeakHighlightRange[] = [];
   for (const hunk of baseDiff.hunks) {

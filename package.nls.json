@@ -19,7 +19,6 @@
   "conflictLens.config.showOverviewRuler.description": "Show markers in the editor overview ruler.",
   "conflictLens.config.showFileDecorationBadges.description": "Show badges on file names that the base branch has changed.",
   "conflictLens.config.remoteCheckIntervalMinutes.description": "Interval in minutes for polling remote updates with git ls-remote. Set to 0 to disable.",
-  "conflictLens.config.largeFileHunkThreshold.description": "Suppress line highlights when a file has more diff hunks than this threshold.",
 
   "conflictLens.color.changedLineBackground.description": "Background color for lines changed on the base branch.",
 

@@ -100,7 +100,12 @@ describe('detectGitState', () => {
   it('returns ready with no modifiers for a clean repo with one commit', async () => {
     const dir = track(await initRepoWithCommit());
     const state = await detectGitState(runner, dir);
-    expect(state).toEqual({ kind: 'ready', detached: false, bisecting: false });
+    expect(state.kind).toBe('ready');
+    if (state.kind === 'ready') {
+      expect(state.detached).toBe(false);
+      expect(state.bisecting).toBe(false);
+      expect(state.headSha).toMatch(/^[0-9a-f]{40}$/);
+    }
   });
 
   it('flags detached HEAD when checking out a raw SHA', async () => {
@@ -164,23 +169,28 @@ describe('detectGitState', () => {
     const gd = await gitDir(dir);
     fs.writeFileSync(path.join(gd, 'BISECT_LOG'), 'log\n');
     const state = await detectGitState(runner, dir);
-    expect(state).toEqual({ kind: 'ready', detached: false, bisecting: true });
+    expect(state.kind).toBe('ready');
+    if (state.kind === 'ready') {
+      expect(state.detached).toBe(false);
+      expect(state.bisecting).toBe(true);
+      expect(state.headSha).toMatch(/^[0-9a-f]{40}$/);
+    }
   });
 });
 
 describe('statusLabelFor', () => {
   it('returns "" for a vanilla ready state', () => {
-    expect(statusLabelFor({ kind: 'ready', detached: false, bisecting: false })).toBe('');
+    expect(statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: false })).toBe('');
   });
 
   it('returns "(detached)" / "(bisecting)" / "(detached, bisecting)"', () => {
-    expect(statusLabelFor({ kind: 'ready', detached: true, bisecting: false })).toBe(
+    expect(statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: false })).toBe(
       '(detached)',
     );
-    expect(statusLabelFor({ kind: 'ready', detached: false, bisecting: true })).toBe(
+    expect(statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: true })).toBe(
       '(bisecting)',
     );
-    expect(statusLabelFor({ kind: 'ready', detached: true, bisecting: true })).toBe(
+    expect(statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: true })).toBe(
       '(detached, bisecting)',
     );
   });
@@ -199,18 +209,18 @@ describe('statusLabelFor', () => {
 describe('isStateBlockingHighlights', () => {
   it('is false only for an attached ready state', () => {
     expect(
-      isStateBlockingHighlights({ kind: 'ready', detached: false, bisecting: false }),
+      isStateBlockingHighlights({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: false }),
     ).toBe(false);
     // Bisecting on a branch is fine; the branch still frames "your work".
     expect(
-      isStateBlockingHighlights({ kind: 'ready', detached: false, bisecting: true }),
+      isStateBlockingHighlights({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: true }),
     ).toBe(false);
     // Detached HEAD has no base branch to diff against → suppressed.
     expect(
-      isStateBlockingHighlights({ kind: 'ready', detached: true, bisecting: false }),
+      isStateBlockingHighlights({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: false }),
     ).toBe(true);
     expect(
-      isStateBlockingHighlights({ kind: 'ready', detached: true, bisecting: true }),
+      isStateBlockingHighlights({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: true }),
     ).toBe(true);
     expect(isStateBlockingHighlights({ kind: 'no-commits' })).toBe(true);
     expect(isStateBlockingHighlights({ kind: 'rebasing' })).toBe(true);

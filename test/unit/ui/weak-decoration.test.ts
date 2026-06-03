@@ -24,7 +24,6 @@ const mockedApply = vi.mocked(applyBaseDiffToBuffer);
 const STUB_BASE_DIFF: BaseDiff = {
   hunks: [],
   leftContent: '',
-  suppressed: false,
 };
 
 interface FakeDocument {
@@ -68,7 +67,6 @@ function makeInputs(): WeakHighlightInputs {
     baseBranch: 'origin/main',
     mergeBaseSha: 'mb123',
     readBlob: vi.fn(),
-    largeFileHunkThreshold: 200,
   };
 }
 
@@ -283,18 +281,6 @@ describe('WeakDecorationCoordinator', () => {
       inputs: makeInputs(),
     });
     expect(result).toBe('clean');
-  });
-
-  it('reports suppressed when the base-diff was hunk-threshold suppressed', async () => {
-    mockedLoad.mockResolvedValueOnce({ hunks: [], leftContent: '', suppressed: true });
-    mockedApply.mockReturnValueOnce([]);
-    const editor = fakeEditor();
-    const result = await coord.update({
-      editor: editor as never,
-      relativeFilePath: 'noisy.ts',
-      inputs: makeInputs(),
-    });
-    expect(result).toBe('suppressed');
   });
 
   it('refreshVisuals rebuilds the decoration type only when toggles flip', () => {

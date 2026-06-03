@@ -156,6 +156,66 @@ export async function resolveRefToCommit(
 }
 
 /**
+ * Detect whether `git diff --numstat` output marks the file as binary.
+ * git prints `-\t-\t<path>` (added / deleted both `-`) whenever either
+ * side of the diff is binary, so a `-`/`-` pair on any record means
+ * "binary". Tolerant of the `-z` rename format and of paths containing a
+ * literal tab (only the first two tabs are treated as field separators).
+ * Exported for unit tests.
+ */
+export function numstatReportsBinary(numstatOutput: string): boolean {
+  for (const line of numstatOutput.split('\n')) {
+    if (line.length === 0) continue;
+    const tab1 = line.indexOf('\t');
+    if (tab1 === -1) continue;
+    const tab2 = line.indexOf('\t', tab1 + 1);
+    if (tab2 === -1) continue;
+    if (line.slice(0, tab1) === '-' && line.slice(tab1 + 1, tab2) === '-') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether the working-tree file at `relativeFilePath` is binary relative
+ * to `ref` (using git's own binary heuristic via `--numstat`). The
+ * text-oriented Show Base Changes / Preview Conflict commands use this to
+ * bail out instead of rendering a binary blob as garbled UTF-8.
+ *
+ * Returns `false` when the diff cannot be produced (non-zero exit) so a
+ * detection failure never blocks a legitimately textual file. `git`'s
+ * binary verdict already covers `.gitattributes` `binary` markers, so no
+ * extra attribute lookup is needed. `--no-ext-diff` / `--no-textconv`
+ * refuse user-defined drivers; `--end-of-options` hardens against refs
+ * beginning with `--`.
+ */
+export async function isPathBinaryAgainstRef(
+  runner: GitRunner,
+  repoRootPath: string,
+  ref: string,
+  relativeFilePath: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<boolean> {
+  const result = await runner.run(
+    [
+      'diff',
+      '--numstat',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--no-color',
+      '--end-of-options',
+      ref,
+      '--',
+      relativeFilePath,
+    ],
+    { cwd: repoRootPath, signal: options.signal },
+  );
+  if (result.exitCode !== 0) return false;
+  return numstatReportsBinary(result.stdout);
+}
+
+/**
  * Extract all hunk headers from a unified-diff payload. Non-`@@` lines are
  * ignored, so the function tolerates `diff --git`, `index`, `---`, `+++`
  * preamble lines as well as patch body lines (since we run with

@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import * as vscode from 'vscode';
@@ -18,7 +19,11 @@ import {
   GitCatFileBatch,
 } from './git/cat-file-batch';
 import { listChangedFilesOnBase } from './git/changed-files';
-import { resolveMergeBase, resolveRefToCommit } from './git/diff';
+import {
+  isPathBinaryAgainstRef,
+  resolveMergeBase,
+  resolveRefToCommit,
+} from './git/diff';
 import type { BlobReader } from './git/blob';
 import { runMergeFile } from './git/merge-file';
 import {
@@ -72,7 +77,6 @@ const ENABLED_SETTING = 'enabled';
 const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
-const LARGE_FILE_HUNK_THRESHOLD_SETTING = 'largeFileHunkThreshold';
 /**
  * Custom URI scheme used by the "Show Base Branch Changes" command to
  * feed the base-side blob into VSCode's built-in diff editor. URIs look like
@@ -96,9 +100,9 @@ interface RuntimeState {
   statusBarItem: vscode.StatusBarItem;
   /**
    * Secondary status-bar item shown only while the active editor is
-   * changed-on-base but has its weak highlights suppressed (file too large,
-   * or more hunks than `largeFileHunkThreshold`). Lets the user tell "no
-   * highlights" apart from "highlights deliberately off".
+   * changed-on-base but has its weak highlights suppressed because the file
+   * is too large. Lets the user tell "no highlights" apart from "highlights
+   * deliberately off".
    */
   suppressedStatusItem: vscode.StatusBarItem;
   weakDecorations: WeakDecorationCoordinator;
@@ -328,22 +332,11 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       const fileDecorationsChanged = event.affectsConfiguration(
         `${CONFIG_NAMESPACE}.${SHOW_FILE_DECORATION_BADGES_SETTING}`,
       );
-      const thresholdChanged = event.affectsConfiguration(
-        `${CONFIG_NAMESPACE}.${LARGE_FILE_HUNK_THRESHOLD_SETTING}`,
-      );
 
       if (baseChanged) await refreshBaseBranch();
       if (visualsChanged) applyWeakDecorationSettings();
       if (fileDecorationsChanged) applyFileDecorationSettings();
-      if (
-        enabledChanged ||
-        visualsChanged ||
-        fileDecorationsChanged ||
-        thresholdChanged
-      ) {
-        // Threshold changes alter the cache-key dimension, so existing
-        // entries are not stale — they live under different keys.
-        // Refresh suffices.
+      if (enabledChanged || visualsChanged || fileDecorationsChanged) {
         scheduleDecorationRefresh();
       }
       if (
@@ -589,15 +582,6 @@ function currentBaseBranchLabel(): string {
   return '(no base)';
 }
 
-function readLargeFileHunkThreshold(): number {
-  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-  const raw = cfg.get<number>(LARGE_FILE_HUNK_THRESHOLD_SETTING, 200);
-  // Coerce non-finite or negative input to "no gate" so a broken
-  // settings.json cannot suppress every highlight.
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
-  return Math.floor(raw);
-}
-
 let decorationRefreshPending = false;
 let decorationRefreshTimer: NodeJS.Timeout | undefined;
 const documentRefreshTimers = new Map<string, NodeJS.Timeout>();
@@ -681,7 +665,6 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
     baseBranch: ctx.baseBranch,
     mergeBaseSha: ctx.mergeBaseSha,
     readBlob: ctx.readBlob,
-    largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
 
   const activeEditor = vscode.window.activeTextEditor;
@@ -738,7 +721,6 @@ async function refreshDecorationsNow(): Promise<void> {
     baseBranch: ctx.baseBranch,
     mergeBaseSha,
     readBlob: ctx.readBlob,
-    largeFileHunkThreshold: readLargeFileHunkThreshold(),
   };
 
   // Sequence: populate the changed-files set first so that the
@@ -1148,14 +1130,22 @@ async function safeDetectGitState(
     });
   } catch (err) {
     runtime?.logChannel.warn(`detectGitState threw: ${stringifyError(err)}`);
-    return { kind: 'ready', detached: false, bisecting: false };
+    // Fallback when detection threw. Empty `headSha` is intentional: the
+    // next successful detection will produce a real SHA, which compares
+    // unequal here and reliably re-triggers the cache / merge-base
+    // refresh chain.
+    return { kind: 'ready', headSha: '', detached: false, bisecting: false };
   }
 }
 
 function gitStatesEqual(a: GitState, b: GitState): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'ready' && b.kind === 'ready') {
-    return a.detached === b.detached && a.bisecting === b.bisecting;
+    return (
+      a.headSha === b.headSha &&
+      a.detached === b.detached &&
+      a.bisecting === b.bisecting
+    );
   }
   return true;
 }
@@ -1513,18 +1503,50 @@ async function showChangedFilesCommand(): Promise<void> {
 
   files.sort((a, b) => a.localeCompare(b));
 
-  const items: vscode.QuickPickItem[] = files.map((f) => ({ label: f }));
+  // Some entries are files the base added (or that this branch deleted), so
+  // they have no copy in the working tree. Flag them in the list and, when
+  // picked, tell the user instead of silently failing to open a missing file.
+  const presence = await Promise.all(
+    files.map((f) => fileExists(path.join(repoRoot, f))),
+  );
+  interface ChangedFileItem extends vscode.QuickPickItem {
+    readonly relativeFilePath: string;
+    readonly existsLocally: boolean;
+  }
+  const items: ChangedFileItem[] = files.map((f, i) => ({
+    label: f,
+    relativeFilePath: f,
+    existsLocally: presence[i],
+    description: presence[i] ? undefined : t('not in the current branch'),
+  }));
   const picked = await vscode.window.showQuickPick(items, {
     title: `${EXTENSION_NAME}: ${baseBranch}`,
     placeHolder: t('Select a file to open'),
   });
   if (!picked) return;
 
+  if (!picked.existsLocally) {
+    void vscode.window.showInformationMessage(
+      t('{0}: {1} does not exist in the current branch.', EXTENSION_NAME, picked.relativeFilePath),
+    );
+    return;
+  }
+
   try {
-    const uri = vscode.Uri.file(path.join(repoRoot, picked.label));
+    const uri = vscode.Uri.file(path.join(repoRoot, picked.relativeFilePath));
     await vscode.window.showTextDocument(uri);
   } catch (err) {
     runtime?.logChannel.warn(`showTextDocument failed: ${stringifyError(err)}`);
+  }
+}
+
+/** True when `absolutePath` exists in the working tree (any file type). */
+async function fileExists(absolutePath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(absolutePath, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1592,6 +1614,25 @@ async function resolveActiveTarget(targetUri?: string): Promise<
   const relative = path.relative(ctx.repository.rootPath, doc.uri.fsPath);
   const normalized = relative.split(path.sep).join('/');
   if (normalized === '' || normalized.startsWith('..')) return undefined;
+
+  // Both commands render the file as text (a diff editor / a trial-merge
+  // document). A binary file would come through as garbled UTF-8, so bail
+  // out with a clear message instead. The weak highlight already never
+  // appears on binary files, so the hover entry points cannot reach here;
+  // this guard covers the command-palette / status-bar invocations.
+  if (
+    await isPathBinaryAgainstRef(
+      ctx.environment.runner,
+      ctx.repository.rootPath,
+      baseBranch,
+      normalized,
+    )
+  ) {
+    void vscode.window.showInformationMessage(
+      t('{0}: {1} is a binary file; nothing to compare as text.', EXTENSION_NAME, normalized),
+    );
+    return undefined;
+  }
 
   return { ctx, baseBranch, doc, relativeFilePath: normalized };
 }
