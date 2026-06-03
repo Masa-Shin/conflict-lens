@@ -172,6 +172,7 @@
   },
   "scripts": {
     "build": "node esbuild.config.mjs",
+    "dev": "npm run build && code --extensionDevelopmentPath=\"$PWD\"",
     "build:prod": "npm run typecheck && node esbuild.config.mjs --production",
     "watch": "node esbuild.config.mjs --watch",
     "typecheck": "tsc --noEmit -p ./",
