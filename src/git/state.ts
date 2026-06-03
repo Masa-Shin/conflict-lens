@@ -162,7 +162,12 @@ export function statusLabelFor(state: GitState): string {
 
 /** True when highlighting / decoration should be suppressed for this state. */
 export function isStateBlockingHighlights(state: GitState): boolean {
-  return state.kind !== 'ready';
+  if (state.kind !== 'ready') return true;
+  // Detached HEAD has no branch to frame "your work" against, and nobody
+  // develops in this state (it is what bisect / `git checkout <sha>` land
+  // you in). Suppress highlights and badges entirely rather than diff
+  // against a base the user is not actually working from.
+  return state.detached;
 }
 
 function emptyMarkers(): Record<MidOpKey, boolean> {

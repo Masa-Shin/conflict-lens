@@ -197,13 +197,21 @@ describe('statusLabelFor', () => {
 });
 
 describe('isStateBlockingHighlights', () => {
-  it('is false only for the ready state', () => {
+  it('is false only for an attached ready state', () => {
     expect(
       isStateBlockingHighlights({ kind: 'ready', detached: false, bisecting: false }),
     ).toBe(false);
+    // Bisecting on a branch is fine; the branch still frames "your work".
+    expect(
+      isStateBlockingHighlights({ kind: 'ready', detached: false, bisecting: true }),
+    ).toBe(false);
+    // Detached HEAD has no base branch to diff against → suppressed.
+    expect(
+      isStateBlockingHighlights({ kind: 'ready', detached: true, bisecting: false }),
+    ).toBe(true);
     expect(
       isStateBlockingHighlights({ kind: 'ready', detached: true, bisecting: true }),
-    ).toBe(false);
+    ).toBe(true);
     expect(isStateBlockingHighlights({ kind: 'no-commits' })).toBe(true);
     expect(isStateBlockingHighlights({ kind: 'rebasing' })).toBe(true);
     expect(isStateBlockingHighlights({ kind: 'merging' })).toBe(true);

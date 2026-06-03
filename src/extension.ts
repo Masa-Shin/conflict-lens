@@ -31,7 +31,11 @@ import {
   type TargetRepository,
   type TargetRepositoryResult,
 } from './git/repository';
-import { detectGitState, type GitState } from './git/state';
+import {
+  detectGitState,
+  isStateBlockingHighlights,
+  type GitState,
+} from './git/state';
 import { t } from './l10n';
 import {
   FileDecorationCoordinator,
@@ -659,7 +663,7 @@ function cancelDocumentRefresh(document: vscode.TextDocument): void {
 async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> {
   if (!runtime || !isEnabled() || currentState.kind !== 'live') return;
   const ctx = currentState.context;
-  if (ctx.gitState.kind !== 'ready' || !ctx.baseBranch) return;
+  if (isStateBlockingHighlights(ctx.gitState) || !ctx.baseBranch) return;
   if (document.isClosed) return;
   // Without a cached merge-base nothing downstream can produce useful
   // ranges, but typing is not where we want to spawn `git merge-base`
@@ -718,7 +722,7 @@ async function refreshDecorationsNow(): Promise<void> {
     return;
   }
   const ctx = currentState.context;
-  if (ctx.gitState.kind !== 'ready' || !ctx.baseBranch) {
+  if (isStateBlockingHighlights(ctx.gitState) || !ctx.baseBranch) {
     clearAll();
     return;
   }
@@ -1285,12 +1289,15 @@ function renderStatusBar(state: ExtensionState): void {
       const { context } = state;
       const baseLabel = context.baseBranch ?? '(no base)';
       const stateLabel = localizedStateLabel(context.gitState);
-      if (context.gitState.kind === 'ready') {
+      if (isStateBlockingHighlights(context.gitState)) {
+        // Paused (mid-operation or detached HEAD): show only the state
+        // label, never a base branch we are not actually comparing
+        // against. stateLabel is always non-empty for these states.
+        statusBarItem.text = `${EXTENSION_NAME}: ${stateLabel}`;
+      } else {
         statusBarItem.text = stateLabel
           ? `${EXTENSION_NAME}: ${baseLabel} ${stateLabel}`
           : `${EXTENSION_NAME}: ${baseLabel}`;
-      } else {
-        statusBarItem.text = `${EXTENSION_NAME}: ${stateLabel}`;
       }
       statusBarItem.tooltip = tooltipFor(context);
       return;
@@ -1346,6 +1353,12 @@ function tooltipFor(context: LiveContext): string {
     case 'reverting':
       return t('{0}: highlighting paused while revert is in progress.', EXTENSION_NAME);
     case 'ready':
+      if (context.gitState.detached) {
+        return t(
+          '{0}: highlighting paused in detached HEAD. Check out a branch to resume.',
+          EXTENSION_NAME,
+        );
+      }
       if (context.baseBranch) {
         return t(
           '{0}: comparing against {1}. Click to change the base branch.',

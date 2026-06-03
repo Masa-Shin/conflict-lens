@@ -16,6 +16,7 @@
   "{0}: highlighting paused while merge is in progress.": "{0}: highlighting paused while merge is in progress.",
   "{0}: highlighting paused while cherry-pick is in progress.": "{0}: highlighting paused while cherry-pick is in progress.",
   "{0}: highlighting paused while revert is in progress.": "{0}: highlighting paused while revert is in progress.",
+  "{0}: highlighting paused in detached HEAD. Check out a branch to resume.": "{0}: highlighting paused in detached HEAD. Check out a branch to resume.",
   "{0}: still initializing, please retry shortly.": "{0}: still initializing, please retry shortly.",
   "{0}: not available in this workspace.": "{0}: not available in this workspace.",
   "{0}: failed to enumerate remote branches.": "{0}: failed to enumerate remote branches.",
