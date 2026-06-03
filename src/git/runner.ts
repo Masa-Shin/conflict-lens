@@ -105,6 +105,17 @@ export const SECURE_ARGS: readonly string[] = Object.freeze([
   '-c', 'diff.renames=true',
 ]);
 
+/**
+ * Build the environment for a git child process by layering, weakest first:
+ * the parent `process.env`, then the caller's overrides, then SECURE_ENV.
+ * SECURE_ENV is applied last so the hardening flags (GIT_TERMINAL_PROMPT=0
+ * etc.) can never be loosened by accident — neither by the ambient
+ * environment nor by a caller-supplied `env`.
+ */
+export function composeGitEnv(callerEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...process.env, ...callerEnv, ...SECURE_ENV };
+}
+
 export function createGitRunner(gitPath: string): GitRunner {
   return {
     gitPath,
@@ -120,13 +131,9 @@ function runGit(
   options: GitCommandOptions,
 ): Promise<GitCommandResult> {
   return new Promise<GitCommandResult>((resolve, reject) => {
-    // process.env is the weakest layer, the caller's overrides come next,
-    // and SECURE_ENV wins last so hardening (GIT_TERMINAL_PROMPT=0 etc.)
-    // can never be loosened by accident.
-    const env: NodeJS.ProcessEnv = { ...process.env, ...options.env, ...SECURE_ENV };
     const child = spawn(gitPath, [...SECURE_ARGS, ...args], {
       cwd: options.cwd,
-      env,
+      env: composeGitEnv(options.env),
       signal: options.signal,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,

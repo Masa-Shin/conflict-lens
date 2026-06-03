@@ -86,29 +86,46 @@ describe('resolveGitEnvironment', () => {
     expect(result.kind).toBe('vscode-git-unavailable');
   });
 
-  it('activates the extension if not already active', async () => {
+  // An API whose git.path is empty, so resolution terminates at
+  // `git-not-found` *before* spawning anything — keeping the outcome
+  // deterministic and independent of the host git.
+  const emptyPathApi: VscodeGitApi = {
+    git: { path: '' },
+    repositories: [],
+    onDidOpenRepository: (() => ({ dispose: () => undefined })) as never,
+    onDidCloseRepository: (() => ({ dispose: () => undefined })) as never,
+  };
+
+  it('activates the extension when it is not already active', async () => {
     let activated = false;
     const ext = makeExt({
       isActive: false,
       activate: async () => {
         activated = true;
       },
+      api: emptyPathApi,
     });
     const result = await resolveGitEnvironment(ext);
     expect(activated).toBe(true);
-    // With a real git on PATH the result will be ok; otherwise git-not-found.
-    expect(['ok', 'git-not-found', 'git-too-old']).toContain(result.kind);
+    // Empty git.path makes the terminal kind deterministic (no spawn).
+    expect(result.kind).toBe('git-not-found');
+  });
+
+  it('does not call activate when the extension is already active', async () => {
+    let activated = false;
+    const ext = makeExt({
+      isActive: true,
+      activate: async () => {
+        activated = true;
+      },
+      api: emptyPathApi,
+    });
+    await resolveGitEnvironment(ext);
+    expect(activated).toBe(false);
   });
 
   it('returns git-not-found when getAPI returns an empty git.path', async () => {
-    const ext = makeExt({
-      api: {
-        git: { path: '' },
-        repositories: [],
-        onDidOpenRepository: (() => ({ dispose: () => undefined })) as never,
-        onDidCloseRepository: (() => ({ dispose: () => undefined })) as never,
-      },
-    });
+    const ext = makeExt({ api: emptyPathApi });
     const result = await resolveGitEnvironment(ext);
     expect(result.kind).toBe('git-not-found');
   });
@@ -116,11 +133,18 @@ describe('resolveGitEnvironment', () => {
   it('resolves successfully against the host git', async () => {
     const ext = makeExt({});
     const result = await resolveGitEnvironment(ext);
-    // We don't know the host git version, but we know it should at least parse.
     if (result.kind === 'ok') {
-      expect(result.environment.version.major).toBe(2);
+      // The success path must hand back a fully populated environment:
+      // a runner bound to the resolved binary, a parsed version at or
+      // above the supported floor, and the cached gitApi handle.
+      const { runner, version, gitApi } = result.environment;
+      expect(runner.gitPath).toBe('/usr/bin/git');
+      expect(version.major).toBeGreaterThanOrEqual(2);
+      expect(Number.isFinite(version.minor)).toBe(true);
+      expect(compareMajorMinor(version, MIN_GIT_VERSION)).toBeGreaterThanOrEqual(0);
+      expect(gitApi).toBeDefined();
     } else {
-      // Acceptable when the test host has git < 2.30 or some weird PATH.
+      // Acceptable when the test host has git < 2.30 or no git at all.
       expect(['git-too-old', 'git-not-found']).toContain(result.kind);
     }
   });

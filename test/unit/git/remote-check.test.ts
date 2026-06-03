@@ -149,7 +149,7 @@ describe('checkRemoteForUpdates', () => {
     }
   });
 
-  it('reports error when the remote ref does not exist', async () => {
+  it('reports error from the ls-remote path when the remote ref does not exist', async () => {
     const fx = await makeFixture();
     teardown.push(path.dirname(fx.localRepo));
     const result = await checkRemoteForUpdates(
@@ -158,17 +158,20 @@ describe('checkRemoteForUpdates', () => {
       'origin/not-a-branch',
     );
     expect(result.kind).toBe('error');
+    // Must be the remote-side failure, not the local-tracking-ref path —
+    // those two share the same `kind` and are only told apart by `reason`.
+    if (result.kind === 'error') {
+      expect(result.reason).not.toMatch(/Local ref/);
+    }
   });
 
-  it('reports error when the local tracking ref is missing', async () => {
+  it('reports error from the local-tracking-ref path when the remote ref exists but was never fetched', async () => {
     const fx = await makeFixture();
     teardown.push(path.dirname(fx.localRepo));
-    // Strange but legal: a remote named "origin" with a base ref that
-    // has no local tracking counterpart (e.g. branch deleted locally).
-    // ls-remote against an unknown ref fails first, so to exercise the
-    // "missing local" branch we ask about a ref that exists remotely
-    // but has no local tracking. The seed repo only has `main`, so we
-    // first push a new branch and never fetch it.
+    // Push a branch to origin from a second clone and never fetch it back
+    // into the local repo. ls-remote then succeeds (the ref exists
+    // remotely) while `rev-parse refs/remotes/origin/untracked` fails,
+    // which is the exact branch this test is meant to exercise.
     const pusher = path.join(path.dirname(fx.localRepo), 'pusher-extra');
     await run('git', ['clone', '-q', fx.remoteRepo, pusher], path.dirname(fx.localRepo));
     await run('git', ['config', 'user.email', 't@e'], pusher);
@@ -184,5 +187,9 @@ describe('checkRemoteForUpdates', () => {
       'origin/untracked',
     );
     expect(result.kind).toBe('error');
+    // Pin the specific branch: the local tracking ref is the one missing.
+    if (result.kind === 'error') {
+      expect(result.reason).toMatch(/Local ref refs\/remotes\/origin\/untracked not found/);
+    }
   });
 });

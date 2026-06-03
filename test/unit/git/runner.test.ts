@@ -4,6 +4,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   SECURE_ARGS,
   SECURE_ENV,
+  composeGitEnv,
   createGitRunner,
 } from '../../../src/git/runner';
 
@@ -59,6 +60,42 @@ describe('DEFAULT_TIMEOUT_MS', () => {
   });
 });
 
+describe('composeGitEnv', () => {
+  it('lets SECURE_ENV override a weakening caller value', () => {
+    const env = composeGitEnv({ GIT_TERMINAL_PROMPT: '1', LC_ALL: 'en_US.UTF-8' });
+    expect(env.GIT_TERMINAL_PROMPT).toBe('0');
+    expect(env.LC_ALL).toBe('C.UTF-8');
+  });
+
+  it('lets SECURE_ENV override an ambient process.env value', () => {
+    const prev = process.env.GIT_TERMINAL_PROMPT;
+    process.env.GIT_TERMINAL_PROMPT = '1';
+    try {
+      expect(composeGitEnv().GIT_TERMINAL_PROMPT).toBe('0');
+    } finally {
+      if (prev === undefined) delete process.env.GIT_TERMINAL_PROMPT;
+      else process.env.GIT_TERMINAL_PROMPT = prev;
+    }
+  });
+
+  it('passes through a caller variable that SECURE_ENV does not set', () => {
+    expect(composeGitEnv({ CONFLICT_LENS_TEST_VAR: 'x' }).CONFLICT_LENS_TEST_VAR).toBe('x');
+  });
+
+  it('layers a caller variable above process.env for non-hardened keys', () => {
+    const prev = process.env.CONFLICT_LENS_TEST_VAR;
+    process.env.CONFLICT_LENS_TEST_VAR = 'from-process';
+    try {
+      expect(
+        composeGitEnv({ CONFLICT_LENS_TEST_VAR: 'from-caller' }).CONFLICT_LENS_TEST_VAR,
+      ).toBe('from-caller');
+    } finally {
+      if (prev === undefined) delete process.env.CONFLICT_LENS_TEST_VAR;
+      else process.env.CONFLICT_LENS_TEST_VAR = prev;
+    }
+  });
+});
+
 describe('createGitRunner integration', () => {
   it('runs git --version successfully using the host git', async () => {
     const runner = createGitRunner('git');
@@ -74,24 +111,6 @@ describe('createGitRunner integration', () => {
     const result = await runner.run(['this-command-does-not-exist'], { cwd: process.cwd() });
     expect(result.exitCode).not.toBe(0);
     expect(result.timedOut).toBe(false);
-  });
-
-  it('keeps SECURE_ENV authoritative even when the caller passes a weakening env override', async () => {
-    const runner = createGitRunner('git');
-    // GIT_TERMINAL_PROMPT='1' would normally be honored; SECURE_ENV must
-    // overwrite it. We assert by running `env` via git (which exposes
-    // GIT_* through git's own env when running an alias is overkill). The
-    // simplest cross-platform proof is to read the resolved env back from
-    // the child via `git config --show-scope` after enabling system config
-    // — but that's noisy. Instead we rely on the observable invariant:
-    // the resulting command still completes (no prompt hang) and the
-    // explicit override is in effect (no spawn error).
-    const result = await runner.run(['--version'], {
-      cwd: process.cwd(),
-      env: { GIT_TERMINAL_PROMPT: '1', LC_ALL: 'en_US.UTF-8' },
-    });
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/^git version /);
   });
 
   it('truncates the result when stdout exceeds maxBufferBytes', async () => {
