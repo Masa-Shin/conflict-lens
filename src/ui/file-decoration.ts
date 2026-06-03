@@ -101,8 +101,18 @@ export class FileDecorationCoordinator
    * (baseBranch, mergeBaseSha) pair has not moved since the last
    * call the work is skipped — explorer paint hot path stays free
    * of redundant git spawns.
+   *
+   * `isSuperseded` lets the caller abandon the result after the await:
+   * when two refreshes race (a slow git lets a newer one start before
+   * the older finishes), the later-finishing one must not commit its
+   * set, or it would leave a stale changed-list resident — and
+   * `provideFileDecoration` reads `changed` with no key guard, so a
+   * stale set repaints wrong badges until the next refresh.
    */
-  async refresh(inputs: FileDecorationInputs): Promise<void> {
+  async refresh(
+    inputs: FileDecorationInputs,
+    isSuperseded?: () => boolean,
+  ): Promise<void> {
     if (this.disposed) return;
     const key = `${inputs.baseBranch}|${inputs.mergeBaseSha}|${inputs.baseTipSha}`;
     if (key === this.lastRefreshKey) return;
@@ -112,6 +122,8 @@ export class FileDecorationCoordinator
       inputs.repoRootPath,
       inputs.baseBranch,
     );
+
+    if (this.disposed || isSuperseded?.()) return;
 
     this.repoRootPath = inputs.repoRootPath;
     this.changed = new Set(changedArr);

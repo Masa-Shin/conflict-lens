@@ -623,6 +623,17 @@ let decorationRefreshTimer: NodeJS.Timeout | undefined;
 const documentRefreshTimers = new Map<string, NodeJS.Timeout>();
 
 /**
+ * Monotonic token stamped on each `refreshDecorationsNow` run. The
+ * pending flag is cleared before the body starts (so the next request
+ * can coalesce), which means a slow git can let a newer run begin
+ * before the older one finishes its awaits. Each run captures the
+ * generation at entry and bails after every await once a newer run has
+ * bumped it — so the older run never commits its stale changed-list or
+ * paints over the newer result. Same class of fix as commit 13c686c.
+ */
+let decorationRefreshGeneration = 0;
+
+/**
  * Per-document memo of repo-relative path resolution. `applyToEditor` runs
  * on the typing hot path; without this it would `lstat` + `realpath` the
  * active file on every keystroke-debounce flush even though the result is
@@ -726,6 +737,8 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
 
 async function refreshDecorationsNow(): Promise<void> {
   if (!runtime) return;
+  const generation = ++decorationRefreshGeneration;
+  const isSuperseded = () => generation !== decorationRefreshGeneration;
   const { weakDecorations, fileDecorations } = runtime;
   const editors = vscode.window.visibleTextEditors;
 
@@ -769,18 +782,26 @@ async function refreshDecorationsNow(): Promise<void> {
   // most — without the pre-filter, every visible editor would spawn a
   // `git diff` in parallel.
   try {
-    await fileDecorations.refresh({
-      runner: inputs.runner,
-      repoRootPath: inputs.repoRootPath,
-      baseBranch: inputs.baseBranch,
-      mergeBaseSha,
-      baseTipSha,
-    });
+    await fileDecorations.refresh(
+      {
+        runner: inputs.runner,
+        repoRootPath: inputs.repoRootPath,
+        baseBranch: inputs.baseBranch,
+        mergeBaseSha,
+        baseTipSha,
+      },
+      isSuperseded,
+    );
   } catch (err) {
     runtime?.logChannel.warn(
       `fileDecorations.refresh failed: ${stringifyError(err)}`,
     );
   }
+
+  // A newer refresh started while we awaited the changed-list. Discard
+  // rather than let our per-editor pass paint against a baseline that
+  // is about to be replaced; the newer run owns the paint from here.
+  if (isSuperseded()) return;
 
   const activeEditor = vscode.window.activeTextEditor;
   const editorResults = await Promise.all(
@@ -791,6 +812,8 @@ async function refreshDecorationsNow(): Promise<void> {
       })),
     ),
   );
+
+  if (isSuperseded()) return;
 
   // The right-click menu and the suppression indicator are gated on the
   // *active* editor's outcome, so resolve that editor's result out of the
@@ -871,7 +894,24 @@ async function applyToEditor(
     return 'clean';
   }
 
-  return weakDecorations.update({ editor, relativeFilePath: normalized, inputs });
+  const outcome = await weakDecorations.update({
+    editor,
+    relativeFilePath: normalized,
+    inputs,
+  });
+  // The suppression indicator means "the base changed this file but its
+  // highlights were withheld" — it is only meaningful once we know the
+  // base actually touched the file. When the changed-files set has not
+  // been populated for this trio yet (`baseChange === undefined`, e.g. an
+  // edit on the editor-driven path lands before the full refresh's fetch
+  // completes), the size gate can report `suppressed` for a file the base
+  // may never have touched, flashing the indicator on a huge but unchanged
+  // file. Downgrade that to `clean`; the next full refresh populates the
+  // set and settles a genuinely-changed file back to `suppressed`.
+  if (outcome === 'suppressed' && baseChange === undefined) {
+    return 'clean';
+  }
+  return outcome;
 }
 
 /**

@@ -78,6 +78,30 @@ describe('FileDecorationCoordinator', () => {
     expect(listChanged).toHaveBeenCalledTimes(2);
   });
 
+  // Regression: when a slow git lets a newer refresh start before the
+  // older one finishes, the older one must not commit its now-stale set.
+  // Otherwise it would leave the old changed-list resident and
+  // provideFileDecoration (no key guard) would paint wrong badges.
+  it('does not commit the result when isSuperseded reports the refresh was overtaken', async () => {
+    listChanged.mockResolvedValueOnce(['stale.txt']);
+    await coord.refresh(makeInputs(), () => true);
+
+    expect(
+      coord.provideFileDecoration(Uri.file('/tmp/repo/stale.txt')),
+    ).toBeUndefined();
+    // The trio was never finalized, so a later refresh is free to run.
+    expect(
+      coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'stale.txt'),
+    ).toBeUndefined();
+
+    listChanged.mockResolvedValueOnce(['fresh.txt']);
+    await coord.refresh(makeInputs(), () => false);
+    expect(listChanged).toHaveBeenCalledTimes(2);
+    expect(
+      coord.provideFileDecoration(Uri.file('/tmp/repo/fresh.txt')),
+    ).toBeDefined();
+  });
+
   it('clear() empties the set and forces the next refresh to run', async () => {
     listChanged.mockResolvedValueOnce(['a.txt']);
     await coord.refresh(makeInputs());
