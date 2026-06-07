@@ -1,0 +1,25 @@
+{
+  "conflictLens.displayName": "Conflict Lens",
+  "conflictLens.description": "ベースブランチとコンフリクトしそうなファイルや行を可視化します。",
+
+  "conflictLens.command.enable.title": "有効化する",
+  "conflictLens.command.disable.title": "無効化する",
+  "conflictLens.command.toggle.title": "有効/無効を切り替える",
+  "conflictLens.command.selectBaseBranch.title": "ベースブランチを選択",
+  "conflictLens.command.refresh.title": "再計算する",
+  "conflictLens.command.showChangedFiles.title": "変更されたファイル一覧を表示",
+  "conflictLens.command.showBaseChanges.title": "ベースブランチとの差分を表示",
+  "conflictLens.command.previewConflict.title": "コンフリクトをプレビュー",
+  "conflictLens.command.showOutputChannel.title": "ログを表示",
+  "conflictLens.command.category": "Conflict Lens",
+
+  "conflictLens.config.enabled.description": "Conflict Lens の有効/無効を切り替えます。",
+  "conflictLens.config.remoteName.description": "自動検出の候補で用いるリモート名。既定は 'origin'。",
+  "conflictLens.config.showOverviewRuler.description": "エディター右端のスクロールバーにマーカーを表示します。",
+  "conflictLens.config.showFileDecorationBadges.description": "ベースブランチで変更されたファイル名にバッジを表示します。",
+  "conflictLens.config.remoteCheckIntervalMinutes.description": "git ls-remote でリモートの更新を確認する間隔（分）。0 で無効になります。",
+
+  "conflictLens.color.changedLineBackground.description": "ベースブランチで変更された行の背景色。",
+
+  "conflictLens.capabilities.untrustedWorkspaces.description": "Conflict Lens は git コマンドを実行し、ワークスペースの設定を読み取るため、信頼済みのワークスペースが必要です。"
+}
