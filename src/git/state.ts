@@ -24,13 +24,18 @@ export type GitState =
   | {
       readonly kind: 'ready';
       /**
-       * Resolved HEAD commit SHA at the time of detection. Carried on the
-       * state so that branch switches, commits, and amends are visible to
-       * `gitStatesEqual` — without this field they collapse to the same
-       * `{detached:false, bisecting:false}` shape and the cache /
-       * merge-base refresh chain never runs.
+       * Resolved HEAD commit SHA at the time of detection, or `undefined`
+       * when detection could not determine it (the safe fallback path).
+       * Carried on the state so that branch switches, commits, and amends
+       * are visible to `gitStatesEqual` — without this field they collapse
+       * to the same `{detached:false, bisecting:false}` shape and the cache
+       * / merge-base refresh chain never runs.
+       *
+       * `undefined` is deliberately *not* the empty string: it marks "SHA
+       * unknown" in the type so no future consumer can hand `''` to git as
+       * if it were a real ref.
        */
-      readonly headSha: string;
+      readonly headSha: string | undefined;
       readonly detached: boolean;
       readonly bisecting: boolean;
     };

@@ -1155,11 +1155,12 @@ async function safeDetectGitState(
     });
   } catch (err) {
     runtime?.logChannel.warn(`detectGitState threw: ${stringifyError(err)}`);
-    // Fallback when detection threw. Empty `headSha` is intentional: the
-    // next successful detection will produce a real SHA, which compares
-    // unequal here and reliably re-triggers the cache / merge-base
-    // refresh chain.
-    return { kind: 'ready', headSha: '', detached: false, bisecting: false };
+    // Fallback when detection threw. `undefined` headSha means "unknown":
+    // the next successful detection produces a real SHA, which compares
+    // unequal here and reliably re-triggers the cache / merge-base refresh
+    // chain. Using `undefined` rather than `''` keeps the "unknown" case
+    // out of any code path that would otherwise pass it to git as a ref.
+    return { kind: 'ready', headSha: undefined, detached: false, bisecting: false };
   }
 }
 
