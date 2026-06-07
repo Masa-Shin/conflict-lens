@@ -2,8 +2,8 @@ import type { WeakHighlightRange } from '../diff/weak-highlight';
 
 /**
  * Approximate the in-memory cost of a result so the byte-bounded LRU does
- * not have to walk objects. Each `WeakHighlightRange` is three numbers and
- * a boolean; 48 bytes is a generous upper bound on V8.
+ * not have to walk objects. Each `WeakHighlightRange` is two numbers;
+ * 48 bytes is a generous upper bound on V8.
  */
 export function sizeOfRanges(ranges: WeakHighlightRange[]): number {
   return ranges.length * 48 + 16;

@@ -16,15 +16,6 @@ export interface DiffHunk {
   readonly newCount: number;
 }
 
-/** Hunk classification per spec §3.2.1. */
-export type HunkKind = 'change' | 'deletion' | 'addition';
-
-export function classifyHunk(hunk: DiffHunk): HunkKind {
-  if (hunk.oldCount > 0 && hunk.newCount === 0) return 'deletion';
-  if (hunk.oldCount === 0 && hunk.newCount > 0) return 'addition';
-  return 'change';
-}
-
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 import type { GitRunner } from './runner';
@@ -100,27 +91,6 @@ export async function resolveMergeBase(
   options: { signal?: AbortSignal } = {},
 ): Promise<string | undefined> {
   const result = await runner.run(['merge-base', '--end-of-options', 'HEAD', baseBranch], {
-    cwd: repoRootPath,
-    signal: options.signal,
-  });
-  if (result.exitCode !== 0) return undefined;
-  const sha = result.stdout.trim();
-  return sha.length === 0 ? undefined : sha;
-}
-
-/**
- * Resolve the current HEAD commit SHA. Returns `undefined` if HEAD does
- * not point to a commit (e.g. unborn branch) or the call fails.
- * `--verify` plus `^{commit}` guards against tag-to-tree pointers; if
- * HEAD happens to be an annotated tag, we want the commit it ultimately
- * resolves to.
- */
-export async function resolveHeadSha(
-  runner: GitRunner,
-  repoRootPath: string,
-  options: { signal?: AbortSignal } = {},
-): Promise<string | undefined> {
-  const result = await runner.run(['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}'], {
     cwd: repoRootPath,
     signal: options.signal,
   });

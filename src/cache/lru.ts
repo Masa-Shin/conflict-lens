@@ -55,20 +55,12 @@ export class ByteLruCache<K, V> {
     this.evict();
   }
 
-  delete(key: K): boolean {
-    const entry = this.map.get(key);
-    if (!entry) return false;
-    this.currentBytes -= entry.size;
-    this.map.delete(key);
-    return true;
-  }
-
   clear(): void {
     this.map.clear();
     this.currentBytes = 0;
   }
 
-  /** Diagnostic helpers (used by debug logging per spec §5.4 observability). */
+  /** Exposed for unit tests asserting the byte/entry accounting. */
   stats(): { entries: number; bytes: number } {
     return { entries: this.map.size, bytes: this.currentBytes };
   }

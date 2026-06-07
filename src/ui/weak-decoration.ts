@@ -393,7 +393,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     this.baseDiffInflight.clear();
   }
 
-  /** Diagnostic stats (used by debug logging per spec §5.4 observability). */
+  /** Exposed for unit tests asserting the cache/inflight state after clear. */
   stats(): { cache: { entries: number; bytes: number }; inflight: number } {
     return { cache: this.cache.stats(), inflight: this.inflight.size };
   }

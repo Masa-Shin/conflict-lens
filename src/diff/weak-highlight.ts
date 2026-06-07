@@ -6,15 +6,10 @@ import { buildLineMapping } from './mapping';
 /**
  * A single weak-highlight target on the right side (HEAD or buffer).
  * Lines are 1-based, inclusive.
- *
- * `insertion` is `true` for pure additions on the base side (oldCount=0).
- * The corresponding lines do not exist on the right; UI code should render
- * them as a gutter marker on the nearest surviving line.
  */
 export interface WeakHighlightRange {
   readonly startLine: number;
   readonly endLine: number;
-  readonly insertion: boolean;
 }
 
 /**
@@ -142,13 +137,13 @@ export function mapHunkToRight(
     // fall back to the preceding one.
     const after = toRight(hunk.oldStart + 1);
     if (after !== undefined) {
-      return { startLine: after, endLine: after, insertion: true };
+      return { startLine: after, endLine: after };
     }
     const before = toRight(hunk.oldStart);
     if (before !== undefined) {
       // Insertion conceptually belongs *after* this line; clamp to rightLineCount.
-      const anchor = Math.min(before + 1, Math.max(rightLineCount, before));
-      return { startLine: anchor, endLine: anchor, insertion: true };
+      const anchor = Math.min(before + 1, rightLineCount);
+      return { startLine: anchor, endLine: anchor };
     }
     return undefined;
   }
@@ -160,7 +155,6 @@ export function mapHunkToRight(
     return {
       startLine: Math.min(startRight, endRight),
       endLine: Math.max(startRight, endRight),
-      insertion: false,
     };
   }
   // Partial survival: scan inward from each end for the closest surviving line.
@@ -170,7 +164,6 @@ export function mapHunkToRight(
     return {
       startLine: Math.min(expandedStart, expandedEnd),
       endLine: Math.max(expandedStart, expandedEnd),
-      insertion: false,
     };
   }
   return undefined;

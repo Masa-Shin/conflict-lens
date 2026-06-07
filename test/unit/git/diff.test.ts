@@ -5,11 +5,9 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
-  classifyHunk,
   isPathBinaryAgainstRef,
   numstatReportsBinary,
   parseHunkHeaders,
-  resolveHeadSha,
   resolveMergeBase,
   resolveRefToCommit,
 } from '../../../src/git/diff';
@@ -138,18 +136,7 @@ describe('numstatReportsBinary', () => {
   });
 });
 
-describe('classifyHunk', () => {
-  it.each([
-    [{ oldStart: 1, oldCount: 2, newStart: 1, newCount: 2 }, 'change'],
-    [{ oldStart: 1, oldCount: 0, newStart: 1, newCount: 3 }, 'addition'],
-    [{ oldStart: 1, oldCount: 2, newStart: 1, newCount: 0 }, 'deletion'],
-    [{ oldStart: 1, oldCount: 1, newStart: 1, newCount: 1 }, 'change'],
-  ] as const)('classifies %o as %s', (hunk, kind) => {
-    expect(classifyHunk(hunk)).toBe(kind);
-  });
-});
-
-describe('resolveMergeBase / resolveHeadSha (integration)', () => {
+describe('resolveMergeBase (integration)', () => {
   const teardown: string[] = [];
   afterEach(() => {
     for (const r of teardown) {
@@ -188,13 +175,6 @@ describe('resolveMergeBase / resolveHeadSha (integration)', () => {
     teardown.push(fx.repo);
     const result = await resolveMergeBase(runner, fx.repo, 'main');
     expect(result).toBe(fx.mergeBase);
-  });
-
-  it('resolveHeadSha returns the current HEAD commit', async () => {
-    const fx = await makeBranchedRepo();
-    teardown.push(fx.repo);
-    const result = await resolveHeadSha(runner, fx.repo);
-    expect(result).toBe(fx.headOnFeature);
   });
 
   it('resolveMergeBase returns undefined for a non-existent ref', async () => {

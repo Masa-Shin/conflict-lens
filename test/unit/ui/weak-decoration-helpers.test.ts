@@ -30,17 +30,17 @@ describe('cacheKeyFor', () => {
 describe('sizeOfRanges', () => {
   it('is monotonic in the number of ranges', () => {
     const empty = sizeOfRanges([]);
-    const one = sizeOfRanges([{ startLine: 1, endLine: 1, insertion: false }]);
+    const one = sizeOfRanges([{ startLine: 1, endLine: 1 }]);
     const two = sizeOfRanges([
-      { startLine: 1, endLine: 1, insertion: false },
-      { startLine: 5, endLine: 9, insertion: true },
+      { startLine: 1, endLine: 1 },
+      { startLine: 5, endLine: 9 },
     ]);
     expect(one).toBeGreaterThan(empty);
     expect(two).toBeGreaterThan(one);
   });
 
   it('returns a non-negative finite number', () => {
-    const v = sizeOfRanges([{ startLine: 1, endLine: 1, insertion: false }]);
+    const v = sizeOfRanges([{ startLine: 1, endLine: 1 }]);
     expect(v).toBeGreaterThan(0);
     expect(Number.isFinite(v)).toBe(true);
   });

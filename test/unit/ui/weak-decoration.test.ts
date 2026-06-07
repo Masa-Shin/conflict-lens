@@ -88,7 +88,7 @@ describe('WeakDecorationCoordinator', () => {
   });
 
   it('applies the computed ranges as whole-line decorations', async () => {
-    mockedApply.mockReturnValueOnce([{ startLine: 2, endLine: 2, insertion: false }]);
+    mockedApply.mockReturnValueOnce([{ startLine: 2, endLine: 2 }]);
     const editor = fakeEditor();
     await coord.update({
       editor: editor as unknown as Parameters<typeof coord.update>[0]['editor'],
@@ -105,7 +105,7 @@ describe('WeakDecorationCoordinator', () => {
   });
 
   it('embeds the hovered document URI in both hover command links', async () => {
-    mockedApply.mockReturnValueOnce([{ startLine: 2, endLine: 2, insertion: false }]);
+    mockedApply.mockReturnValueOnce([{ startLine: 2, endLine: 2 }]);
     const editor = fakeEditor();
     await coord.update({
       editor: editor as never,
@@ -123,7 +123,7 @@ describe('WeakDecorationCoordinator', () => {
   });
 
   it('skips the git-side load on a same-input re-update; only the buffer-side mapping re-runs', async () => {
-    mockedApply.mockReturnValueOnce([{ startLine: 1, endLine: 1, insertion: false }]);
+    mockedApply.mockReturnValueOnce([{ startLine: 1, endLine: 1 }]);
     const editor = fakeEditor();
     const inputs = makeInputs();
     await coord.update({
@@ -144,7 +144,7 @@ describe('WeakDecorationCoordinator', () => {
   });
 
   it('reuses the cached base-diff on a new buffer version (no git spawn, mapping re-runs)', async () => {
-    mockedApply.mockReturnValue([{ startLine: 1, endLine: 1, insertion: false }]);
+    mockedApply.mockReturnValue([{ startLine: 1, endLine: 1 }]);
     const editor = fakeEditor('a\nb\nc\n', 1);
     const inputs = makeInputs();
     await coord.update({
@@ -174,7 +174,7 @@ describe('WeakDecorationCoordinator', () => {
           resolveLoad = resolve;
         }),
     );
-    mockedApply.mockReturnValueOnce([{ startLine: 1, endLine: 2, insertion: false }]);
+    mockedApply.mockReturnValueOnce([{ startLine: 1, endLine: 2 }]);
     const editor = fakeEditor('a\nb\nc\n', 5);
     const updatePromise = coord.update({
       editor: editor as never,
@@ -198,7 +198,7 @@ describe('WeakDecorationCoordinator', () => {
           resolveLoad = resolve;
         }),
     );
-    mockedApply.mockReturnValue([{ startLine: 1, endLine: 1, insertion: false }]);
+    mockedApply.mockReturnValue([{ startLine: 1, endLine: 1 }]);
     const editor = fakeEditor();
     const inputs = makeInputs();
     const p1 = coord.update({
@@ -231,7 +231,7 @@ describe('WeakDecorationCoordinator', () => {
   });
 
   it('still highlights a file just under the line-count gate', async () => {
-    mockedApply.mockReturnValueOnce([{ startLine: 1, endLine: 1, insertion: false }]);
+    mockedApply.mockReturnValueOnce([{ startLine: 1, endLine: 1 }]);
     const editor = fakeEditor();
     editor.document.lineCount = 15_000;
     const result = await coord.update({
@@ -299,7 +299,7 @@ describe('WeakDecorationCoordinator', () => {
           resolveLoad = resolve;
         }),
     );
-    mockedApply.mockReturnValue([{ startLine: 1, endLine: 1, insertion: false }]);
+    mockedApply.mockReturnValue([{ startLine: 1, endLine: 1 }]);
     const editor = fakeEditor();
     const updatePromise = coord.update({
       editor: editor as never,

@@ -36,26 +36,26 @@ describe('mapHunkToRight (pure)', () => {
 
   it('change hunk with both endpoints surviving', () => {
     const r = mapHunkToRight({ oldStart: 3, oldCount: 2, newStart: 3, newCount: 2 }, identity, 10);
-    expect(r).toEqual({ startLine: 3, endLine: 4, insertion: false });
+    expect(r).toEqual({ startLine: 3, endLine: 4 });
   });
 
   it('pure addition uses the line after the insertion point', () => {
     const r = mapHunkToRight({ oldStart: 5, oldCount: 0, newStart: 6, newCount: 3 }, identity, 10);
-    expect(r).toEqual({ startLine: 6, endLine: 6, insertion: true });
+    expect(r).toEqual({ startLine: 6, endLine: 6 });
   });
 
   it('pure addition with shifted mapping', () => {
     // Right side has 2 extra leading lines (every left N → right N+2).
     const shifted = (n: number) => (n >= 1 && n <= 5 ? n + 2 : undefined);
     const r = mapHunkToRight({ oldStart: 3, oldCount: 0, newStart: 4, newCount: 2 }, shifted, 7);
-    expect(r).toEqual({ startLine: 6, endLine: 6, insertion: true });
+    expect(r).toEqual({ startLine: 6, endLine: 6 });
   });
 
   it('hunk whose endpoints survive but middle is lost expands to the survivors', () => {
     // Left line 5 deleted on right; 4 and 6 survive.
     const partial = (n: number) => (n === 5 ? undefined : n);
     const r = mapHunkToRight({ oldStart: 4, oldCount: 3, newStart: 4, newCount: 3 }, partial, 10);
-    expect(r).toEqual({ startLine: 4, endLine: 6, insertion: false });
+    expect(r).toEqual({ startLine: 4, endLine: 6 });
   });
 
   it('returns undefined when no merge-base line in the hunk survives', () => {
@@ -143,7 +143,7 @@ describe('computeWeakHighlights (integration)', () => {
     });
     // Base changed merge-base line 3; feature prepended 1 line, so it
     // lands on right-side line 4.
-    expect(ranges).toEqual([{ startLine: 4, endLine: 4, insertion: false }]);
+    expect(ranges).toEqual([{ startLine: 4, endLine: 4 }]);
   });
 
   it('follows the buffer when rightContent differs from HEAD', async () => {
@@ -162,7 +162,7 @@ describe('computeWeakHighlights (integration)', () => {
       readBlob: createBlobReaderFromRunner(runner, fx.repo),
     });
     // Two leading lines shift merge-base line 3 to right-side line 5.
-    expect(ranges).toEqual([{ startLine: 5, endLine: 5, insertion: false }]);
+    expect(ranges).toEqual([{ startLine: 5, endLine: 5 }]);
   });
 
   it('returns [] when the base side did not change the file', async () => {

@@ -63,14 +63,6 @@ describe('ByteLruCache', () => {
     expect(cache.stats()).toEqual({ entries: 0, bytes: 0 });
   });
 
-  it('supports delete()', () => {
-    const cache = new ByteLruCache<string, string>(10, 10, bytesOf);
-    cache.set('a', 'aaaa');
-    expect(cache.delete('a')).toBe(true);
-    expect(cache.delete('a')).toBe(false);
-    expect(cache.stats()).toEqual({ entries: 0, bytes: 0 });
-  });
-
   it('clears all entries', () => {
     const cache = new ByteLruCache<string, string>(10, 10, bytesOf);
     cache.set('a', 'aaaa');
