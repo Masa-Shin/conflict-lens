@@ -1,181 +1,183 @@
 # Conflict Lens
 
+English | [日本語](README.ja.md)
+
 [![VS Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/Masa-Shin.conflict-lens)](https://marketplace.visualstudio.com/items?itemName=Masa-Shin.conflict-lens)
 [![CI](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-ソースコード上でコンフリクトしそうな箇所をハイライトする VS Code 拡張
+A VS Code extension that highlights code likely to conflict with the base branch.
 
-リモートのベースブランチを定期チェックし、ベースブランチで変更されているコードをハイライトします。
+It periodically checks the remote base branch and highlights code in the file you have open that has been changed on the base branch.
 
-![Conflict Lens の動作画面](media/conflict-highlight.png)
+![Conflict Lens in action](media/conflict-highlight.png)
 
-ベースブランチとの diff をその場で確認することも可能です。
+You can also review the diff against the base branch on the spot.
 
-![ベースブランチとの差分表示](media/base-diff.png)
+![Diff against the base branch](media/base-diff.png)
 
-- コンフリクトの危険があるコードを開発中にシームレスに検知
-- 他の開発者との修正方針のバッティングを事前検知
-- 実際のコンフリクトもシミュレート表示可能
+- Catch conflict-prone code seamlessly while you work
+- Spot clashes with other developers' changes before they happen
+- Simulate the actual conflict to preview it
 
-## 目次
+## Table of Contents
 
-- [機能](#機能)
-- [要件](#要件)
-- [インストール](#インストール)
-- [使い方](#使い方)
-- [その他の機能](#その他の機能)
-- [設定リファレンス](#設定リファレンス)
-- [コマンドリファレンス](#コマンドリファレンス)
-- [トラブルシューティング](#トラブルシューティング)
-- [既知の制限](#既知の制限)
-- [開発](#開発)
-- [ライセンス](#ライセンス)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [More Features](#more-features)
+- [Configuration Reference](#configuration-reference)
+- [Command Reference](#command-reference)
+- [Troubleshooting](#troubleshooting)
+- [Known Limitations](#known-limitations)
+- [Development](#development)
+- [License](#license)
 
-## 機能
+## Features
 
-### ベースブランチにおける修正の可視化
+### Visualizing changes on the base branch
 
-リモートのベースブランチを定期チェックし、リモートで変更が入った行があればハイライトします。
+It periodically checks the remote base branch and highlights any lines that have been changed upstream.
 
-デフォルトでは 5 分ごとに（あるいはファイルにフォーカスしたタイミングで）`git ls-remote`を行い更新をチェックします。
-更新があれば、ベースブランチを更新するためのプロンプトを表示します（OK を押すとベースブランチのみ `git fetch`）。
+By default it runs `git ls-remote` every 5 minutes (or when you focus a file) to check for updates.
+When an update is found, it shows a prompt to update the base branch (clicking OK runs `git fetch` for the base branch only).
 
-![変更行のハイライト](media/highlight-changed-lines.png)
+![Highlighting changed lines](media/highlight-changed-lines.png)
 
-また、ハイライト行のホバーメニューから、リモートにおける変更をチェックすることも可能です。
+You can also check the upstream changes from the hover menu on a highlighted line.
 
-![ホバーメニューからリモートの変更を確認](media/hover-remote-check.png)
+![Checking remote changes from the hover menu](media/hover-remote-check.png)
 
-## 要件
+## Requirements
 
 | | |
 |---|---|
-| VS Code | 1.74 以上 |
-| Git | 2.30 以上 |
+| VS Code | 1.74 or later |
+| Git | 2.30 or later |
 
-## インストール
+## Installation
 
-### Marketplace から
+### From the Marketplace
 
-<< 公開したら追記 >>
+<< Add once published >>
 
-## 使い方
+## Usage
 
-1. git リポジトリを VS Code で開く
-2. ステータスバー右下の `Conflict Lens` を押下し、ベースブランチを選択する（すでに選択されている場合は不要）
+1. Open a git repository in VS Code
+2. Click `Conflict Lens` in the bottom-right of the status bar and select a base branch (not needed if one is already selected)
 
-これで各種機能が有効化されます。
+This enables the features.
 
-### ベースブランチの自動検出機能について
+### About automatic base branch detection
 
-拡張機能をインストール時、ベースブランチを次の順序で自動検出します。
+When you install the extension, it auto-detects the base branch in the following order.
 
-1. リモートのデフォルトブランチ（`refs/remotes/<remoteName>/HEAD` の参照先）
+1. The remote's default branch (the target of `refs/remotes/<remoteName>/HEAD`)
 2. `<remoteName>/main`
 3. `<remoteName>/master`
 
-検出できなかった場合は `(no base)` と表示され、各種機能が無効化されます。
+If none is found, it shows `(no base)` and the features are disabled.
 
-## その他の機能
+## More Features
 
-### 変更されたファイル一覧を見る
+### Viewing the list of changed files
 
-`Conflict Lens: Show Changed Files` を実行すると、ベースブランチで変更されたファイルが画面上部に一覧表示され、選択するとそのファイルが開きます。
+Running `Conflict Lens: Show Changed Files` lists the files changed on the base branch at the top of the screen; selecting one opens that file.
 
-### 差分エディタで詳細を見る
+### Viewing details in the diff editor
 
-ベースブランチでの現在の内容と、自分のローカルの内容を左右に並べて比較できます。
+Compare the current content on the base branch with your local content side by side.
 
-起動方法:
+How to open:
 
-- ハイライトされた行のホバーメニューから「Show base changes」リンクをクリック
-- コマンドパレットから `Conflict Lens: Show Base Branch Changes` を実行
+- Click the "Show base changes" link in the hover menu on a highlighted line
+- Run `Conflict Lens: Show Base Branch Changes` from the Command Palette
 
-### コンフリクトの内容を確認する
+### Previewing the conflict
 
-想定されるコンフリクトの内容を、別タブで開いて確認できます。コンフリクトしない場合は「衝突しません」と通知します。
+Preview the conflict that would occur in a separate tab. If there is no conflict, it notifies you with "No conflict."
 
-![コンフリクトのプレビュー](media/preview-conflict.png)
+![Conflict preview](media/preview-conflict.png)
 
-起動方法:
+How to open:
 
-- ハイライトされた行のホバーメニューから「Preview conflict」リンクをクリック
-- コマンドパレットから `Conflict Lens: Preview Conflict` を実行
+- Click the "Preview conflict" link in the hover menu on a highlighted line
+- Run `Conflict Lens: Preview Conflict` from the Command Palette
 
-### 一時的に無効化
+### Temporarily disabling
 
-`Conflict Lens: Toggle` でハイライトの on/off を切り替えられます。
+`Conflict Lens: Toggle` switches the highlighting on and off.
 
-## 設定リファレンス
+## Configuration Reference
 
-| キー | デフォルト | 範囲 | 説明 |
+| Key | Default | Range | Description |
 |---|---|---|---|
-| `conflictLens.enabled` | `true` | bool | 拡張全体の on/off |
-| `conflictLens.baseBranch` | `origin/main` | string | 比較対象。空で自動検出 |
-| `conflictLens.remoteName` | `origin` | string | 自動検出で使うリモート名 |
-| `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーにハイライト位置を表示するか |
-| `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
-| `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | リモート更新検知の間隔（分）。`0` で無効 |
+| `conflictLens.enabled` | `true` | bool | Turn the whole extension on/off |
+| `conflictLens.baseBranch` | `origin/main` | string | Comparison target. Empty for auto-detection |
+| `conflictLens.remoteName` | `origin` | string | Remote name used for auto-detection |
+| `conflictLens.showOverviewRuler` | `true` | bool | Show highlight positions on the scrollbar |
+| `conflictLens.showFileDecorationBadges` | `true` | bool | Show badges in the Explorer |
+| `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | Interval for checking remote updates (minutes). `0` to disable |
 
-ハイライトの色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
+You can override the highlight colors in `workbench.colorCustomizations` in your VS Code `settings.json`. The available keys are:
 
-- `conflictLens.changedLineBackground` — ベースが変更した行の背景色（デフォルト黄色）
+- `conflictLens.changedLineBackground` — background color for lines changed on the base (yellow by default)
 
-## コマンドリファレンス
+## Command Reference
 
-| コマンド | 説明 |
+| Command | Description |
 |---|---|
-| `Conflict Lens: Enable` | 有効化 |
-| `Conflict Lens: Disable` | 無効化 |
-| `Conflict Lens: Toggle` | 有効/無効を切り替え |
-| `Conflict Lens: Refresh` | キャッシュを破棄して再計算 |
-| `Conflict Lens: Select Base Branch` | ベースブランチを選択 |
-| `Conflict Lens: Show Changed Files` | 変更されたファイル一覧 |
-| `Conflict Lens: Show Base Branch Changes` | 現在のファイルとベースブランチの差分を表示 |
-| `Conflict Lens: Preview Conflict` | 予想されるコンフリクトを読み取り専用のプレビューで表示 |
-| `Conflict Lens: Show Output Channel` | ログを表示 |
+| `Conflict Lens: Enable` | Enable |
+| `Conflict Lens: Disable` | Disable |
+| `Conflict Lens: Toggle` | Toggle enabled/disabled |
+| `Conflict Lens: Refresh` | Discard the cache and recompute |
+| `Conflict Lens: Select Base Branch` | Select the base branch |
+| `Conflict Lens: Show Changed Files` | List of changed files |
+| `Conflict Lens: Show Base Branch Changes` | Show the diff between the current file and the base branch |
+| `Conflict Lens: Preview Conflict` | Show the expected conflict in a read-only preview |
+| `Conflict Lens: Show Output Channel` | Show the logs |
 
 
-## トラブルシューティング
+## Troubleshooting
 
-`Conflict Lens: Show Output Channel` でログを確認できます。
+You can check the logs with `Conflict Lens: Show Output Channel`.
 
-**ハイライトが出ない**
+**No highlights appear**
 
-機能が止まっているときは、ステータスバーの `Conflict Lens` に打ち消し線が付きます。理由はその項目にマウスを乗せると表示されます。
+When the feature is halted, `Conflict Lens` in the status bar is shown with a strikethrough. Hover over the item to see the reason.
 
-- ベースブランチが未検出 → `Select Base Branch` で指定
-- rebase または merge の途中 → 完了または中止してください
-- どのブランチにもいない状態（detached HEAD）→ この状態で作業することは通例ないため停止中。ブランチをチェックアウトすると再開します
-- git が見つからない、または git リポジトリではない
+- Base branch not detected → specify one with `Select Base Branch`
+- In the middle of a rebase or merge → finish or abort it
+- Not on any branch (detached HEAD) → halted, since you rarely work in this state. Checking out a branch resumes it
+- Git not found, or not a git repository
 
-打ち消し線が付いていないのにハイライトが出ない場合は、ベースとの差分自体がない可能性があります。次のコマンドで確認できます。
+If there is no strikethrough but still no highlights, there may simply be no diff against the base. You can check with the following command.
 
 ```sh
 git log --oneline HEAD...origin/main
 ```
 
-**設定を変えたが反映されない**
+**A setting change is not reflected**
 
-設定変更は即時反映されるはずですが、それでもおかしい場合は `Conflict Lens: Refresh` を試してください。
+Setting changes should apply immediately, but if something still seems off, try `Conflict Lens: Refresh`.
 
-## 既知の制限
+## Known Limitations
 
-- マルチルートワークスペースでは最初のフォルダのみ監視
-- サブモジュール内のファイル、シンボリックリンクは対象外
-- ベースが行った変更箇所が 200 を超えるファイルは装飾されません（閾値は変更可）
+- In a multi-root workspace, only the first folder is watched
+- Files inside submodules and symbolic links are not covered
+- Files where the base changed more than 200 locations are not decorated (the threshold is configurable)
 
-## 開発
+## Development
 
-### 開発環境の構築
+### Setting up the development environment
 
-以下を実行すると、ビルドした拡張機能を読み込んだ状態の VSCode が別ウィンドウで立ち上がり、動作確認ができます。
+Running the following launches a separate VS Code window with the built extension loaded, so you can try it out.
 
 ```sh
 npm run dev
 ```
 
-## ライセンス
+## License
 
 MIT

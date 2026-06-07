@@ -1,2 +1,2 @@
-# 空の Issue（テンプレートなし）を禁止し、上の2種類に誘導する。
+# Disallow blank issues (no template) and steer people to the two types above.
 blank_issues_enabled: false

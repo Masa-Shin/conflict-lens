@@ -1,15 +1,15 @@
-## 概要
+## Summary
 
-<!-- 何を・なぜ変更したかを簡潔に。関連 Issue があれば「Closes #123」と書く。 -->
+<!-- Briefly describe what changed and why. If there is a related issue, write "Closes #123". -->
 
-## 変更内容
+## Changes
 
-<!-- レビュアーが追いやすいよう、主な変更点を箇条書きで。 -->
+<!-- List the main changes as bullet points so reviewers can follow along. -->
 
 -
 
-## 動作確認
+## Verification
 
-<!-- どう確認したか。手動確認の手順や、追加・更新したテストの観点。 -->
+<!-- How you verified it. Manual steps you ran, or the focus of any tests you added or updated. -->
 
 -

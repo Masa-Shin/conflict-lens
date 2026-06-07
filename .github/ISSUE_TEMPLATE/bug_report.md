@@ -1,32 +1,32 @@
 ---
-name: バグ報告
-about: 期待どおりに動かない点を報告する
+name: Bug report
+about: Report something that doesn't work as expected
 title: ""
 labels: bug
 assignees: ""
 ---
 
-## 現象
+## What happened
 
-<!-- 何が起きたかを簡潔に。 -->
+<!-- Briefly describe what happened. -->
 
-## 再現手順
+## Steps to reproduce
 
 1.
 2.
 3.
 
-## 期待する動作
+## Expected behavior
 
-<!-- 本来どうなってほしかったか。 -->
+<!-- What you expected to happen instead. -->
 
-## 環境
+## Environment
 
 - OS:
-- VSCode バージョン:
-- Conflict Lens バージョン:
-- リポジトリの状態（リベース中 / コンフリクト発生中 など、関係しそうなら）:
+- VS Code version:
+- Conflict Lens version:
+- Repository state (e.g. mid-rebase, conflict in progress — if it seems relevant):
 
-## 補足
+## Additional context
 
-<!-- スクリーンショット、出力ログ（「Conflict Lens」出力チャンネル）など。 -->
+<!-- Screenshots, output logs (the "Conflict Lens" output channel), etc. -->
