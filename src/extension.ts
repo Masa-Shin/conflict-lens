@@ -1386,30 +1386,27 @@ function setState(
 function renderStatusBar(state: ExtensionState): void {
   if (!runtime) return;
   const { statusBarItem } = runtime;
+  // The label is kept to the bare extension name to save space; the base
+  // branch and git state live in the tooltip. When highlighting cannot run,
+  // the name is struck through so the disabled state reads at a glance.
   switch (state.kind) {
     case 'initializing':
-      statusBarItem.text = t('{0}: (initializing)', EXTENSION_NAME);
-      statusBarItem.tooltip = t('{0}: click to select base branch', EXTENSION_NAME);
+      statusBarItem.text = EXTENSION_NAME;
+      statusBarItem.tooltip = t('{0}: (initializing)', EXTENSION_NAME);
       return;
     case 'unavailable':
-      statusBarItem.text = `${EXTENSION_NAME}: ${state.reason}`;
+      statusBarItem.text = strikethrough(EXTENSION_NAME);
       statusBarItem.tooltip =
         state.tooltip ?? t('{0}: click to select base branch', EXTENSION_NAME);
       return;
     case 'live': {
       const { context } = state;
-      const baseLabel = context.baseBranch ?? '(no base)';
-      const stateLabel = localizedStateLabel(context.gitState);
-      if (isStateBlockingHighlights(context.gitState)) {
-        // Paused (mid-operation or detached HEAD): show only the state
-        // label, never a base branch we are not actually comparing
-        // against. stateLabel is always non-empty for these states.
-        statusBarItem.text = `${EXTENSION_NAME}: ${stateLabel}`;
-      } else {
-        statusBarItem.text = stateLabel
-          ? `${EXTENSION_NAME}: ${baseLabel} ${stateLabel}`
-          : `${EXTENSION_NAME}: ${baseLabel}`;
-      }
+      // "Usable" means we are actually highlighting: a base branch is
+      // selected and no mid-operation / detached state is blocking it.
+      const usable =
+        context.baseBranch !== undefined &&
+        !isStateBlockingHighlights(context.gitState);
+      statusBarItem.text = usable ? EXTENSION_NAME : strikethrough(EXTENSION_NAME);
       statusBarItem.tooltip = tooltipFor(context);
       return;
     }
@@ -1419,33 +1416,14 @@ function renderStatusBar(state: ExtensionState): void {
 }
 
 /**
- * Translate a GitState to a status-bar suffix. Equivalent in shape to
- * `statusLabelFor` from src/git/state.ts, but routed through `t()` so the
- * label survives bundle replacement. The pure helper is intentionally kept
- * in state.ts so that unit tests do not depend on vscode.
+ * Render text with a strikethrough by following each code point with the
+ * combining long stroke overlay (U+0336). The status bar does not support
+ * markdown or styled text, so this is the only way to strike a label; the
+ * space is struck too, keeping the line continuous across words.
  */
-function localizedStateLabel(state: GitState): string {
-  switch (state.kind) {
-    case 'no-commits':
-      return t('(no commits)');
-    case 'rebasing':
-      return t('(rebasing)');
-    case 'merging':
-      return t('(merging)');
-    case 'cherry-picking':
-      return t('(cherry-picking)');
-    case 'reverting':
-      return t('(reverting)');
-    case 'ready': {
-      if (!state.detached && !state.bisecting) return '';
-      const mods: string[] = [];
-      if (state.detached) mods.push(t('detached'));
-      if (state.bisecting) mods.push(t('bisecting'));
-      return `(${mods.join(', ')})`;
-    }
-    default:
-      return assertNever(state);
-  }
+function strikethrough(text: string): string {
+  const COMBINING_LONG_STROKE = String.fromCharCode(0x0336);
+  return Array.from(text, (ch) => `${ch}${COMBINING_LONG_STROKE}`).join('');
 }
 
 function tooltipFor(context: LiveContext): string {
