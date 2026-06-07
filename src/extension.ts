@@ -338,6 +338,11 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       if (event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_CHECK_INTERVAL_SETTING}`)) {
         startOrRestartRemoteCheckTimer();
       }
+      // git.autofetch flips whether we poll at all: turning it off starts
+      // the timer, turning it on stops it.
+      if (event.affectsConfiguration('git.autofetch')) {
+        startOrRestartRemoteCheckTimer();
+      }
     }),
   );
 
@@ -953,14 +958,6 @@ let inflightRemoteCheck: AbortController | undefined;
  * catches up (i.e. the check transitions to `up-to-date`).
  */
 let lastNotifiedRemoteSha: string | undefined;
-/**
- * Cache of the remote SHA we last *suppressed* a prompt for because VS
- * Code's own auto-fetch is enabled. Separate from `lastNotifiedRemoteSha`
- * so the suppression log fires at most once per upstream state without
- * disturbing the prompt-dedupe (turning auto-fetch off must restore the
- * prompt for a still-behind base). Reset on `up-to-date` like its sibling.
- */
-let lastAutofetchSuppressedSha: string | undefined;
 
 /**
  * Wall-clock timestamp of the most recently *initiated* remote check.
@@ -995,6 +992,16 @@ function readRemoteCheckIntervalMinutes(): number {
  */
 function maybePerformRemoteCheck(): void {
   if (readRemoteCheckIntervalMinutes() <= 0) return;
+  // When VS Code's own auto-fetch is on it keeps the base tracking ref
+  // fresh, so the ls-remote poll (whose only purpose is to prompt for a
+  // fetch) is redundant. Read fresh so toggling the setting takes effect
+  // on the next focus tick without any extra wiring.
+  if (
+    currentState.kind === 'live' &&
+    isVscodeGitAutofetchEnabled(currentState.context.repository.handle.rootUri)
+  ) {
+    return;
+  }
   const now = Date.now();
   if (now - lastRemoteCheckAt < REMOTE_CHECK_THROTTLE_MS) return;
   lastRemoteCheckAt = now;
@@ -1011,6 +1018,10 @@ function startOrRestartRemoteCheckTimer(): void {
   stopRemoteCheckTimer();
   if (currentState.kind !== 'live') return;
   if (!currentState.context.baseBranch) return;
+  // Skip the periodic poll entirely when VS Code auto-fetch is on; its
+  // fetches keep the base ref fresh and the state-change handler refreshes
+  // the highlights. Re-evaluated whenever git.autofetch changes.
+  if (isVscodeGitAutofetchEnabled(currentState.context.repository.handle.rootUri)) return;
   const intervalMin = readRemoteCheckIntervalMinutes();
   if (!Number.isFinite(intervalMin) || intervalMin <= 0) return;
   const intervalMs = intervalMin * 60_000;
@@ -1054,7 +1065,6 @@ async function performRemoteCheck(): Promise<void> {
     if (controller.signal.aborted) return;
     if (result.kind === 'up-to-date') {
       lastNotifiedRemoteSha = undefined;
-      lastAutofetchSuppressedSha = undefined;
       return;
     }
     if (result.kind === 'error') {
@@ -1076,21 +1086,6 @@ async function performRemoteCheck(): Promise<void> {
 async function handleRemoteBehind(ctx: LiveContext, remoteSha: string): Promise<void> {
   const baseBranch = ctx.baseBranch;
   if (!baseBranch) return;
-
-  // If VS Code's own auto-fetch is on, it will refresh the base tracking
-  // ref by itself and our state-change handler re-resolves the merge-base
-  // when it lands, so the highlights update without any user action. Skip
-  // the prompt rather than nag. Logged once per upstream state; the
-  // prompt-dedupe is left untouched so disabling auto-fetch restores it.
-  if (isVscodeGitAutofetchEnabled(ctx.repository.handle.rootUri)) {
-    if (lastAutofetchSuppressedSha !== remoteSha) {
-      lastAutofetchSuppressedSha = remoteSha;
-      runtime?.logChannel.info(
-        `${baseBranch} moved upstream; not prompting because git.autofetch is enabled.`,
-      );
-    }
-    return;
-  }
 
   // Notify at most once per distinct remote SHA so the user is not
   // re-prompted on every timer tick. A non-modal toast carries a single
