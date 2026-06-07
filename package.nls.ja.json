@@ -1,6 +1,6 @@
 {
   "conflictLens.displayName": "Conflict Lens",
-  "conflictLens.description": "ベースブランチとコンフリクトしそうなファイルや行を可視化します。",
+  "conflictLens.description": "編集するとベースブランチとコンフリクトしうるファイルや行を可視化します。",
 
   "conflictLens.command.enable.title": "有効化する",
   "conflictLens.command.disable.title": "無効化する",

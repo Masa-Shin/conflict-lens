@@ -1,6 +1,6 @@
 {
   "conflictLens.displayName": "Conflict Lens",
-  "conflictLens.description": "Visualize files and lines that may conflict with the base branch.",
+  "conflictLens.description": "Visualize files and lines where your edits could conflict with the base branch.",
 
   "conflictLens.command.enable.title": "Enable",
   "conflictLens.command.disable.title": "Disable",
