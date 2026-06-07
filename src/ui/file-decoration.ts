@@ -36,9 +36,7 @@ export interface FileDecorationInputs {
  * `(baseBranch, mergeBaseSha)` collapses redundant refresh calls into
  * no-ops so an editor-driven refresh does not re-spawn the diff.
  */
-export class FileDecorationCoordinator
-  implements vscode.FileDecorationProvider, vscode.Disposable
-{
+export class FileDecorationCoordinator implements vscode.FileDecorationProvider, vscode.Disposable {
   private changed = new Set<string>();
   private settings: FileDecorationSettings;
   private baseBranchLabel = '(no base)';
@@ -53,9 +51,7 @@ export class FileDecorationCoordinator
   private lastRefreshKey: string | undefined;
   private disposed = false;
 
-  private readonly didChangeEmitter = new vscode.EventEmitter<
-    vscode.Uri[] | undefined
-  >();
+  private readonly didChangeEmitter = new vscode.EventEmitter<vscode.Uri[] | undefined>();
   readonly onDidChangeFileDecorations: vscode.Event<vscode.Uri[] | undefined> =
     this.didChangeEmitter.event;
 
@@ -109,10 +105,7 @@ export class FileDecorationCoordinator
    * `provideFileDecoration` reads `changed` with no key guard, so a
    * stale set repaints wrong badges until the next refresh.
    */
-  async refresh(
-    inputs: FileDecorationInputs,
-    isSuperseded?: () => boolean,
-  ): Promise<void> {
+  async refresh(inputs: FileDecorationInputs, isSuperseded?: () => boolean): Promise<void> {
     if (this.disposed) return;
     const key = `${inputs.baseBranch}|${inputs.mergeBaseSha}|${inputs.baseTipSha}`;
     if (key === this.lastRefreshKey) return;
@@ -149,10 +142,7 @@ export class FileDecorationCoordinator
    * the explorer rebuilds — callers should only invoke this on actual
    * configuration deltas.
    */
-  updateSettings(
-    next: FileDecorationSettings,
-    baseBranchLabel: string,
-  ): void {
+  updateSettings(next: FileDecorationSettings, baseBranchLabel: string): void {
     if (this.disposed) return;
     this.settings = next;
     this.baseBranchLabel = baseBranchLabel;

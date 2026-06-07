@@ -101,10 +101,7 @@ describe('parseHunkHeaders', () => {
   });
 
   it('ignores malformed @@ lines without aborting', () => {
-    const diff = [
-      '@@ totally bogus @@',
-      '@@ -1,1 +1,1 @@',
-    ].join('\n');
+    const diff = ['@@ totally bogus @@', '@@ -1,1 +1,1 @@'].join('\n');
     expect(parseHunkHeaders(diff)).toEqual([
       { oldStart: 1, oldCount: 1, newStart: 1, newCount: 1 },
     ]);
@@ -170,9 +167,7 @@ describe('resolveMergeBase / resolveHeadSha (integration)', () => {
     mergeBase: string;
     headOnFeature: string;
   }> {
-    const repo = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-mb-')),
-    );
+    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-mb-')));
     await run('git', ['init', '-q', '-b', 'main'], repo);
     await run('git', ['config', 'user.email', 't@e'], repo);
     await run('git', ['config', 'user.name', 'Test'], repo);
@@ -259,12 +254,7 @@ describe('resolveMergeBase / resolveHeadSha (integration)', () => {
   it('isPathBinaryAgainstRef is false for an unknown ref (non-zero exit)', async () => {
     const fx = await makeBranchedRepo();
     teardown.push(fx.repo);
-    const result = await isPathBinaryAgainstRef(
-      runner,
-      fx.repo,
-      'origin/nope',
-      'file.txt',
-    );
+    const result = await isPathBinaryAgainstRef(runner, fx.repo, 'origin/nope', 'file.txt');
     expect(result).toBe(false);
   });
 });

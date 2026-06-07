@@ -38,14 +38,10 @@ async function makeWorkspace(opts: {
   defaultBranch: 'main' | 'master' | 'trunk';
   pushHeadRef: boolean;
 }): Promise<Workspace> {
-  const bareRemote = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-bare-')),
-  );
+  const bareRemote = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-bare-')));
   await run('git', ['init', '-q', '--bare', '-b', opts.defaultBranch, bareRemote], os.tmpdir());
 
-  const repo = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-work-')),
-  );
+  const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-work-')));
   await run('git', ['init', '-q', '-b', opts.defaultBranch], repo);
   await run('git', ['config', 'user.email', 't@e'], repo);
   await run('git', ['config', 'user.name', 'Test'], repo);
@@ -58,11 +54,7 @@ async function makeWorkspace(opts: {
   // Optionally also push a trunk branch so origin/HEAD detection has work to do.
   if (opts.pushHeadRef) {
     // Set origin/HEAD to point at the default branch (some test cases want it).
-    await run(
-      'git',
-      ['remote', 'set-head', 'origin', opts.defaultBranch],
-      repo,
-    );
+    await run('git', ['remote', 'set-head', 'origin', opts.defaultBranch], repo);
   }
   return { repo, bareRemote };
 }

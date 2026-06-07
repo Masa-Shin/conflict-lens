@@ -6,11 +6,7 @@ import {
 } from './branches';
 import type { GitRunner } from './runner';
 
-export type BaseBranchSource =
-  | 'configured'
-  | 'symbolic-ref'
-  | 'default-main'
-  | 'default-master';
+export type BaseBranchSource = 'configured' | 'symbolic-ref' | 'default-main' | 'default-master';
 
 export type BaseBranchResolution =
   | {

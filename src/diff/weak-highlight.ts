@@ -57,18 +57,9 @@ export interface ComputeWeakHighlightsParams extends LoadBaseDiffParams {
  * for the lifetime of those three values — typing in the editor never
  * invalidates the result.
  */
-export async function loadBaseDiff(
-  params: LoadBaseDiffParams,
-): Promise<BaseDiff> {
-  const {
-    runner,
-    repoRootPath,
-    baseBranch,
-    mergeBaseSha,
-    relativeFilePath,
-    readBlob,
-    signal,
-  } = params;
+export async function loadBaseDiff(params: LoadBaseDiffParams): Promise<BaseDiff> {
+  const { runner, repoRootPath, baseBranch, mergeBaseSha, relativeFilePath, readBlob, signal } =
+    params;
 
   const hunks = await runBaseDiff(
     runner,

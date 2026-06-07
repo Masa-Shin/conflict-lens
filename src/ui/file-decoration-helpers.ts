@@ -8,10 +8,7 @@ import * as path from 'node:path';
  * Lives in its own helper module so unit tests can exercise it without
  * pulling in the `vscode` module that the coordinator depends on.
  */
-export function relativeIfWithin(
-  absolutePath: string,
-  repoRootPath: string,
-): string | undefined {
+export function relativeIfWithin(absolutePath: string, repoRootPath: string): string | undefined {
   const rel = path.relative(repoRootPath, absolutePath);
   if (rel === '') return undefined;
   if (rel.startsWith('..')) return undefined;

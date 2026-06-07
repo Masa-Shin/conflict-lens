@@ -14,9 +14,7 @@ describe('runMergeFile (integration)', () => {
   beforeAll(() => {
     // merge-file does not need a repository, but we still pass a cwd to
     // keep the runner's contract honest.
-    repo = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-mf-cwd-')),
-    );
+    repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-mf-cwd-')));
   });
 
   afterAll(() => {
@@ -28,13 +26,7 @@ describe('runMergeFile (integration)', () => {
   });
 
   it('returns clean output when only one side changes', async () => {
-    const result = await runMergeFile(
-      runner,
-      repo,
-      'A\nB\nC\n',
-      'A\nB\nC\n',
-      'A\nB-theirs\nC\n',
-    );
+    const result = await runMergeFile(runner, repo, 'A\nB\nC\n', 'A\nB\nC\n', 'A\nB-theirs\nC\n');
     expect(result.conflictCount).toBe(0);
     expect(result.content).toBe('A\nB-theirs\nC\n');
   });
@@ -59,13 +51,7 @@ describe('runMergeFile (integration)', () => {
   });
 
   it('emits an empty ours section when ours deletes a line that theirs modifies', async () => {
-    const result = await runMergeFile(
-      runner,
-      repo,
-      'A\nC\n',
-      'A\nB\nC\n',
-      'A\nB-theirs\nC\n',
-    );
+    const result = await runMergeFile(runner, repo, 'A\nC\n', 'A\nB\nC\n', 'A\nB-theirs\nC\n');
     expect(result.conflictCount).toBeGreaterThan(0);
     // The "ours" section between <<<<<<< and ======= should have no
     // lines because ours deleted that line.
@@ -88,13 +74,7 @@ describe('runMergeFile (integration)', () => {
   it('parallel calls do not collide on tmpdir names', async () => {
     const results = await Promise.all(
       Array.from({ length: 8 }, (_, i) =>
-        runMergeFile(
-          runner,
-          repo,
-          `ours-${i}\n`,
-          `base-${i}\n`,
-          `theirs-${i}\n`,
-        ),
+        runMergeFile(runner, repo, `ours-${i}\n`, `base-${i}\n`, `theirs-${i}\n`),
       ),
     );
     // Each call had three differing inputs so each conflicts.

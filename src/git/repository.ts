@@ -117,10 +117,7 @@ function findRepositoryContaining(
   return best?.repo;
 }
 
-function repositoryContains(
-  repo: VscodeGitRepository,
-  canonicalFolderPath: string,
-): boolean {
+function repositoryContains(repo: VscodeGitRepository, canonicalFolderPath: string): boolean {
   const repoPath = canonicalRepoRoot(repo);
   if (!repoPath) return false;
   return isSamePathOrUnder(canonicalFolderPath, repoPath);
@@ -149,10 +146,9 @@ async function classifyRepository(
   }
 
   // Exclude submodules.
-  const result = await runner.run(
-    ['rev-parse', '--show-superproject-working-tree'],
-    { cwd: rootPath },
-  );
+  const result = await runner.run(['rev-parse', '--show-superproject-working-tree'], {
+    cwd: rootPath,
+  });
   if (result.exitCode === 0) {
     const superproject = result.stdout.trim();
     if (superproject.length > 0) {

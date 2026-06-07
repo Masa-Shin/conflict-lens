@@ -75,10 +75,7 @@ describe('WeakDecorationCoordinator', () => {
   let coord: WeakDecorationCoordinator;
 
   beforeEach(() => {
-    coord = new WeakDecorationCoordinator(
-      { showOverviewRuler: true },
-      'origin/main',
-    );
+    coord = new WeakDecorationCoordinator({ showOverviewRuler: true }, 'origin/main');
     mockedLoad.mockReset();
     mockedApply.mockReset();
     // Default: load returns the stub immediately; tests can override.
@@ -91,9 +88,7 @@ describe('WeakDecorationCoordinator', () => {
   });
 
   it('applies the computed ranges as whole-line decorations', async () => {
-    mockedApply.mockReturnValueOnce([
-      { startLine: 2, endLine: 2, insertion: false },
-    ]);
+    mockedApply.mockReturnValueOnce([{ startLine: 2, endLine: 2, insertion: false }]);
     const editor = fakeEditor();
     await coord.update({
       editor: editor as unknown as Parameters<typeof coord.update>[0]['editor'],
@@ -103,16 +98,14 @@ describe('WeakDecorationCoordinator', () => {
     expect(editor._calls).toHaveLength(1);
     const call = editor._calls[0]!;
     expect(call.options).toHaveLength(1);
-    const opt = (call.options[0] as { range: { start: { line: number }; end: { line: number } } });
+    const opt = call.options[0] as { range: { start: { line: number }; end: { line: number } } };
     // 1-based startLine 2 → 0-based start.line 1.
     expect(opt.range.start.line).toBe(1);
     expect(opt.range.end.line).toBe(1);
   });
 
   it('embeds the hovered document URI in both hover command links', async () => {
-    mockedApply.mockReturnValueOnce([
-      { startLine: 2, endLine: 2, insertion: false },
-    ]);
+    mockedApply.mockReturnValueOnce([{ startLine: 2, endLine: 2, insertion: false }]);
     const editor = fakeEditor();
     await coord.update({
       editor: editor as never,
@@ -125,18 +118,12 @@ describe('WeakDecorationCoordinator', () => {
     // 1-based startLine 2 → 0-based line 1, paired with the URI.
     const showBaseArgs = encodeURIComponent(JSON.stringify([1, uri]));
     const previewArgs = encodeURIComponent(JSON.stringify([uri]));
-    expect(value).toContain(
-      `command:conflictLens.showBaseChanges?${showBaseArgs}`,
-    );
-    expect(value).toContain(
-      `command:conflictLens.previewConflict?${previewArgs}`,
-    );
+    expect(value).toContain(`command:conflictLens.showBaseChanges?${showBaseArgs}`);
+    expect(value).toContain(`command:conflictLens.previewConflict?${previewArgs}`);
   });
 
   it('skips the git-side load on a same-input re-update; only the buffer-side mapping re-runs', async () => {
-    mockedApply.mockReturnValueOnce([
-      { startLine: 1, endLine: 1, insertion: false },
-    ]);
+    mockedApply.mockReturnValueOnce([{ startLine: 1, endLine: 1, insertion: false }]);
     const editor = fakeEditor();
     const inputs = makeInputs();
     await coord.update({
@@ -187,9 +174,7 @@ describe('WeakDecorationCoordinator', () => {
           resolveLoad = resolve;
         }),
     );
-    mockedApply.mockReturnValueOnce([
-      { startLine: 1, endLine: 2, insertion: false },
-    ]);
+    mockedApply.mockReturnValueOnce([{ startLine: 1, endLine: 2, insertion: false }]);
     const editor = fakeEditor('a\nb\nc\n', 5);
     const updatePromise = coord.update({
       editor: editor as never,
@@ -213,9 +198,7 @@ describe('WeakDecorationCoordinator', () => {
           resolveLoad = resolve;
         }),
     );
-    mockedApply.mockReturnValue([
-      { startLine: 1, endLine: 1, insertion: false },
-    ]);
+    mockedApply.mockReturnValue([{ startLine: 1, endLine: 1, insertion: false }]);
     const editor = fakeEditor();
     const inputs = makeInputs();
     const p1 = coord.update({
@@ -287,19 +270,13 @@ describe('WeakDecorationCoordinator', () => {
   it('refreshVisuals rebuilds the decoration type only when toggles flip', () => {
     const initial = (coord as unknown as { decorationType: TextEditorDecorationType })
       .decorationType;
-    const sameVisuals = coord.refreshVisuals(
-      { showOverviewRuler: true },
-      'origin/main',
-    );
+    const sameVisuals = coord.refreshVisuals({ showOverviewRuler: true }, 'origin/main');
     expect(sameVisuals).toBe(false);
-    expect(
-      (coord as unknown as { decorationType: TextEditorDecorationType }).decorationType,
-    ).toBe(initial);
-
-    const changed = coord.refreshVisuals(
-      { showOverviewRuler: false },
-      'origin/main',
+    expect((coord as unknown as { decorationType: TextEditorDecorationType }).decorationType).toBe(
+      initial,
     );
+
+    const changed = coord.refreshVisuals({ showOverviewRuler: false }, 'origin/main');
     expect(changed).toBe(true);
     expect(initial.disposed).toBe(true);
     expect(
@@ -322,9 +299,7 @@ describe('WeakDecorationCoordinator', () => {
           resolveLoad = resolve;
         }),
     );
-    mockedApply.mockReturnValue([
-      { startLine: 1, endLine: 1, insertion: false },
-    ]);
+    mockedApply.mockReturnValue([{ startLine: 1, endLine: 1, insertion: false }]);
     const editor = fakeEditor();
     const updatePromise = coord.update({
       editor: editor as never,

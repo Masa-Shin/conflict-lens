@@ -75,22 +75,11 @@ export async function checkRemoteForUpdates(
 
   const [remoteResult, localResult] = await Promise.all([
     runner.run(
-      [
-        'ls-remote',
-        '--exit-code',
-        '--end-of-options',
-        split.remote,
-        `refs/heads/${split.branch}`,
-      ],
+      ['ls-remote', '--exit-code', '--end-of-options', split.remote, `refs/heads/${split.branch}`],
       { cwd: repoRootPath, signal: options.signal },
     ),
     runner.run(
-      [
-        'rev-parse',
-        '--verify',
-        '--end-of-options',
-        `refs/remotes/${baseBranch}^{commit}`,
-      ],
+      ['rev-parse', '--verify', '--end-of-options', `refs/remotes/${baseBranch}^{commit}`],
       { cwd: repoRootPath, signal: options.signal },
     ),
   ]);
@@ -98,9 +87,7 @@ export async function checkRemoteForUpdates(
   if (remoteResult.exitCode !== 0) {
     return {
       kind: 'error',
-      reason:
-        remoteResult.stderr.trim() ||
-        `git ls-remote exited with ${remoteResult.exitCode}`,
+      reason: remoteResult.stderr.trim() || `git ls-remote exited with ${remoteResult.exitCode}`,
     };
   }
   if (localResult.exitCode !== 0) {

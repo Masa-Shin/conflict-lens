@@ -31,7 +31,8 @@ export class EventEmitter<T> {
     return { dispose: () => this.listeners.delete(listener) };
   };
   fire(value: T): void {
-    for (const l of [...this.listeners]) l(value);
+    const snapshot = Array.from(this.listeners);
+    for (const l of snapshot) l(value);
   }
   dispose(): void {
     this.listeners.clear();
@@ -58,7 +59,10 @@ export class MarkdownString {
 }
 
 export class Position {
-  constructor(public readonly line: number, public readonly character: number) {}
+  constructor(
+    public readonly line: number,
+    public readonly character: number,
+  ) {}
 }
 
 export class Range {
@@ -123,7 +127,13 @@ export class Uri {
     return `${this.scheme}:${auth}${this.path}${q}${f}`;
   }
 
-  with(change: { scheme?: string; authority?: string; path?: string; query?: string; fragment?: string }): Uri {
+  with(change: {
+    scheme?: string;
+    authority?: string;
+    path?: string;
+    query?: string;
+    fragment?: string;
+  }): Uri {
     return new Uri(
       change.scheme ?? this.scheme,
       change.authority ?? this.authority,
@@ -248,7 +258,10 @@ export const window = {
   createTextEditorDecorationType(options: DecorationRenderOptions): TextEditorDecorationType {
     return new TextEditorDecorationType(options);
   },
-  createOutputChannel(_name: string, _options?: unknown): {
+  createOutputChannel(
+    _name: string,
+    _options?: unknown,
+  ): {
     info(): void;
     warn(): void;
     error(): void;
@@ -257,7 +270,14 @@ export const window = {
   } {
     return { info() {}, warn() {}, error() {}, show() {}, dispose() {} };
   },
-  createStatusBarItem(): { text: string; tooltip: string; command: string | undefined; show(): void; hide(): void; dispose(): void } {
+  createStatusBarItem(): {
+    text: string;
+    tooltip: string;
+    command: string | undefined;
+    show(): void;
+    hide(): void;
+    dispose(): void;
+  } {
     return {
       text: '',
       tooltip: '',

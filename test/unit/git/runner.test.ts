@@ -89,9 +89,9 @@ describe('composeGitEnv', () => {
     const prev = process.env.CONFLICT_LENS_TEST_VAR;
     process.env.CONFLICT_LENS_TEST_VAR = 'from-process';
     try {
-      expect(
-        composeGitEnv({ CONFLICT_LENS_TEST_VAR: 'from-caller' }).CONFLICT_LENS_TEST_VAR,
-      ).toBe('from-caller');
+      expect(composeGitEnv({ CONFLICT_LENS_TEST_VAR: 'from-caller' }).CONFLICT_LENS_TEST_VAR).toBe(
+        'from-caller',
+      );
     } finally {
       if (prev === undefined) delete process.env.CONFLICT_LENS_TEST_VAR;
       else process.env.CONFLICT_LENS_TEST_VAR = prev;

@@ -99,10 +99,10 @@ export async function resolveMergeBase(
   baseBranch: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<string | undefined> {
-  const result = await runner.run(
-    ['merge-base', '--end-of-options', 'HEAD', baseBranch],
-    { cwd: repoRootPath, signal: options.signal },
-  );
+  const result = await runner.run(['merge-base', '--end-of-options', 'HEAD', baseBranch], {
+    cwd: repoRootPath,
+    signal: options.signal,
+  });
   if (result.exitCode !== 0) return undefined;
   const sha = result.stdout.trim();
   return sha.length === 0 ? undefined : sha;
@@ -120,10 +120,10 @@ export async function resolveHeadSha(
   repoRootPath: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<string | undefined> {
-  const result = await runner.run(
-    ['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}'],
-    { cwd: repoRootPath, signal: options.signal },
-  );
+  const result = await runner.run(['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}'], {
+    cwd: repoRootPath,
+    signal: options.signal,
+  });
   if (result.exitCode !== 0) return undefined;
   const sha = result.stdout.trim();
   return sha.length === 0 ? undefined : sha;

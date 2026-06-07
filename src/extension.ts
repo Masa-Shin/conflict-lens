@@ -14,38 +14,21 @@ import {
   type GitEnvironmentResult,
 } from './git/binary';
 import { listRemoteBranches } from './git/branches';
-import {
-  createBlobReaderFromBatch,
-  GitCatFileBatch,
-} from './git/cat-file-batch';
+import { createBlobReaderFromBatch, GitCatFileBatch } from './git/cat-file-batch';
 import { listChangedFilesOnBase } from './git/changed-files';
-import {
-  isPathBinaryAgainstRef,
-  resolveMergeBase,
-  resolveRefToCommit,
-} from './git/diff';
+import { isPathBinaryAgainstRef, resolveMergeBase, resolveRefToCommit } from './git/diff';
 import type { BlobReader } from './git/blob';
 import { runMergeFile } from './git/merge-file';
-import {
-  checkRemoteForUpdates,
-  splitRemoteBranch,
-} from './git/remote-check';
+import { checkRemoteForUpdates, splitRemoteBranch } from './git/remote-check';
 import {
   detectTargetRepository,
   isFileWithinRepository,
   type TargetRepository,
   type TargetRepositoryResult,
 } from './git/repository';
-import {
-  detectGitState,
-  isStateBlockingHighlights,
-  type GitState,
-} from './git/state';
+import { detectGitState, isStateBlockingHighlights, type GitState } from './git/state';
 import { t } from './l10n';
-import {
-  FileDecorationCoordinator,
-  type FileDecorationSettings,
-} from './ui/file-decoration';
+import { FileDecorationCoordinator, type FileDecorationSettings } from './ui/file-decoration';
 import {
   WeakDecorationCoordinator,
   type HighlightOutcome,
@@ -175,10 +158,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Primary status-bar item: always visible, shows the current base branch /
   // git state and acts as the click target for "Select Base Branch".
-  const statusBarItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    100,
-  );
+  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarItem.name = EXTENSION_NAME;
   statusBarItem.command = 'conflictLens.selectBaseBranch';
   statusBarItem.show();
@@ -193,10 +173,7 @@ export function activate(context: vscode.ExtensionContext): void {
     99,
   );
   suppressedStatusItem.name = t('{0}: highlights suppressed', EXTENSION_NAME);
-  suppressedStatusItem.text = t(
-    '$(eye-closed) {0}: too large to highlight',
-    EXTENSION_NAME,
-  );
+  suppressedStatusItem.text = t('$(eye-closed) {0}: too large to highlight', EXTENSION_NAME);
   suppressedStatusItem.tooltip = t(
     '{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes.',
     EXTENSION_NAME,
@@ -212,13 +189,8 @@ export function activate(context: vscode.ExtensionContext): void {
   //    editor; reads through whatever `readBlob` the live context exposes.
   //  - conflictPreviews: backs the read-only "Preview Conflict" document.
   const initialSettings = readWeakDecorationSettings();
-  const weakDecorations = new WeakDecorationCoordinator(
-    initialSettings,
-    '(no base)',
-  );
-  const fileDecorations = new FileDecorationCoordinator(
-    readFileDecorationSettings(),
-  );
+  const weakDecorations = new WeakDecorationCoordinator(initialSettings, '(no base)');
+  const fileDecorations = new FileDecorationCoordinator(readFileDecorationSettings());
   const diffContentProvider = new BaseSideContentProvider(() =>
     currentState.kind === 'live' ? currentState.context.readBlob : undefined,
   );
@@ -231,14 +203,8 @@ export function activate(context: vscode.ExtensionContext): void {
     fileDecorations,
     conflictPreviews,
     vscode.window.registerFileDecorationProvider(fileDecorations),
-    vscode.workspace.registerTextDocumentContentProvider(
-      DIFF_PROVIDER_SCHEME,
-      diffContentProvider,
-    ),
-    vscode.workspace.registerTextDocumentContentProvider(
-      CONFLICT_PREVIEW_SCHEME,
-      conflictPreviews,
-    ),
+    vscode.workspace.registerTextDocumentContentProvider(DIFF_PROVIDER_SCHEME, diffContentProvider),
+    vscode.workspace.registerTextDocumentContentProvider(CONFLICT_PREVIEW_SCHEME, conflictPreviews),
   );
 
   // Publish the assembled UI as module-level `runtime`. Every command and
@@ -285,9 +251,7 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
     return;
   }
   const { environment } = envResult;
-  log?.info(
-    `Git ${environment.version.raw} resolved at ${environment.runner.gitPath}.`,
-  );
+  log?.info(`Git ${environment.version.raw} resolved at ${environment.runner.gitPath}.`);
 
   const folders = vscode.workspace.workspaceFolders;
   const primaryFolder = folders?.[0]?.uri.fsPath;
@@ -383,9 +347,7 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       const baseChanged =
         event.affectsConfiguration(`${CONFIG_NAMESPACE}.${BASE_BRANCH_SETTING}`) ||
         event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_NAME_SETTING}`);
-      const enabledChanged = event.affectsConfiguration(
-        `${CONFIG_NAMESPACE}.${ENABLED_SETTING}`,
-      );
+      const enabledChanged = event.affectsConfiguration(`${CONFIG_NAMESPACE}.${ENABLED_SETTING}`);
       const visualsChanged = event.affectsConfiguration(
         `${CONFIG_NAMESPACE}.${SHOW_OVERVIEW_RULER_SETTING}`,
       );
@@ -399,11 +361,7 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       if (enabledChanged || visualsChanged || fileDecorationsChanged) {
         scheduleDecorationRefresh();
       }
-      if (
-        event.affectsConfiguration(
-          `${CONFIG_NAMESPACE}.${REMOTE_CHECK_INTERVAL_SETTING}`,
-        )
-      ) {
+      if (event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_CHECK_INTERVAL_SETTING}`)) {
         startOrRestartRemoteCheckTimer();
       }
     }),
@@ -464,12 +422,10 @@ async function refreshMergeBase(): Promise<void> {
   // outcome) shifts the tip without moving the merge-base, and the
   // base-diff is a function of both endpoints.
   const [mergeBaseSha, baseTipSha] = await Promise.all([
-    resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, resolvedFor).catch(
-      (err) => {
-        runtime?.logChannel.warn(`resolveMergeBase threw: ${stringifyError(err)}`);
-        return undefined;
-      },
-    ),
+    resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, resolvedFor).catch((err) => {
+      runtime?.logChannel.warn(`resolveMergeBase threw: ${stringifyError(err)}`);
+      return undefined;
+    }),
     resolveRefToCommit(ctx.environment.runner, ctx.repository.rootPath, resolvedFor).catch(
       (err) => {
         runtime?.logChannel.warn(`resolveRefToCommit threw: ${stringifyError(err)}`);
@@ -515,9 +471,7 @@ async function refreshBaseBranch(): Promise<void> {
   }
 
   if (resolution.kind === 'ok') {
-    log?.info(
-      `Base branch resolved: ${resolution.baseBranch} (${resolution.source}).`,
-    );
+    log?.info(`Base branch resolved: ${resolution.baseBranch} (${resolution.source}).`);
     setState((prev) => {
       if (prev.kind !== 'live') return prev;
       return {
@@ -587,10 +541,7 @@ async function refreshBaseBranch(): Promise<void> {
   stopRemoteCheckTimer();
   notifyOnce(
     'none-found',
-    t(
-      '{0}: could not detect a base branch. Run Select Base Branch to set one.',
-      EXTENSION_NAME,
-    ),
+    t('{0}: could not detect a base branch. Run Select Base Branch to set one.', EXTENSION_NAME),
     { action: 'select-base-branch' },
   );
 }
@@ -647,10 +598,7 @@ function applyWeakDecorationSettings(): void {
 
 function applyFileDecorationSettings(): void {
   if (!runtime) return;
-  runtime.fileDecorations.updateSettings(
-    readFileDecorationSettings(),
-    currentBaseBranchLabel(),
-  );
+  runtime.fileDecorations.updateSettings(readFileDecorationSettings(), currentBaseBranchLabel());
 }
 
 function currentBaseBranchLabel(): string {
@@ -743,9 +691,7 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
   // — base/HEAD events refresh them for us. Skip silently.
   if (!ctx.mergeBaseSha || !ctx.baseTipSha) return;
 
-  const editors = vscode.window.visibleTextEditors.filter(
-    (e) => e.document === document,
-  );
+  const editors = vscode.window.visibleTextEditors.filter((e) => e.document === document);
   if (editors.length === 0) return;
 
   const inputs: WeakHighlightInputs = {
@@ -835,9 +781,7 @@ async function refreshDecorationsNow(): Promise<void> {
       isSuperseded,
     );
   } catch (err) {
-    runtime?.logChannel.warn(
-      `fileDecorations.refresh failed: ${stringifyError(err)}`,
-    );
+    runtime?.logChannel.warn(`fileDecorations.refresh failed: ${stringifyError(err)}`);
   }
 
   // A newer refresh started while we awaited the changed-list. Discard
@@ -860,8 +804,7 @@ async function refreshDecorationsNow(): Promise<void> {
   // The right-click menu and the suppression indicator are gated on the
   // *active* editor's outcome, so resolve that editor's result out of the
   // batch.
-  const activeOutcome =
-    editorResults.find((r) => r.editor === activeEditor)?.outcome ?? 'clean';
+  const activeOutcome = editorResults.find((r) => r.editor === activeEditor)?.outcome ?? 'clean';
   applyActiveOutcome(activeOutcome);
 }
 
@@ -881,11 +824,7 @@ function applyActiveOutcome(outcome: HighlightOutcome): void {
   const hasHighlights = outcome === 'highlighted';
   if (hasHighlights !== lastHasHighlights) {
     lastHasHighlights = hasHighlights;
-    void vscode.commands.executeCommand(
-      'setContext',
-      'conflictLens.hasHighlights',
-      hasHighlights,
-    );
+    void vscode.commands.executeCommand('setContext', 'conflictLens.hasHighlights', hasHighlights);
   }
   const item = runtime?.suppressedStatusItem;
   if (item) {
@@ -1004,13 +943,11 @@ function notifyOnce(
     // safely. Comparing against the English literal 'Select' would break the
     // moment a localized bundle ships.
     const label = t('Select');
-    void vscode.window
-      .showInformationMessage(message, label)
-      .then((choice) => {
-        if (choice === label) {
-          void vscode.commands.executeCommand('conflictLens.selectBaseBranch');
-        }
-      });
+    void vscode.window.showInformationMessage(message, label).then((choice) => {
+      if (choice === label) {
+        void vscode.commands.executeCommand('conflictLens.selectBaseBranch');
+      }
+    });
   } else {
     void vscode.window.showInformationMessage(message);
   }
@@ -1140,10 +1077,7 @@ async function performRemoteCheck(): Promise<void> {
   }
 }
 
-async function handleRemoteBehind(
-  ctx: LiveContext,
-  remoteSha: string,
-): Promise<void> {
+async function handleRemoteBehind(ctx: LiveContext, remoteSha: string): Promise<void> {
   const baseBranch = ctx.baseBranch;
   if (!baseBranch) return;
 
@@ -1155,9 +1089,7 @@ async function handleRemoteBehind(
   // moves to a different SHA.
   if (lastNotifiedRemoteSha === remoteSha) return;
   lastNotifiedRemoteSha = remoteSha;
-  runtime?.logChannel.info(
-    `Remote moved (${remoteSha.slice(0, 8)}); notifying for ${baseBranch}.`,
-  );
+  runtime?.logChannel.info(`Remote moved (${remoteSha.slice(0, 8)}); notifying for ${baseBranch}.`);
   const fetchLabel = t('Fetch');
   const choice = await vscode.window.showInformationMessage(
     t('{0}: {1} has moved upstream.', EXTENSION_NAME, baseBranch),
@@ -1189,10 +1121,7 @@ async function handleRemoteBehind(
  * disable the SSH transport and credential prompts that any real
  * network fetch would need.
  */
-async function tryFetchBaseOnly(
-  ctx: LiveContext,
-  baseBranch: string,
-): Promise<boolean> {
+async function tryFetchBaseOnly(ctx: LiveContext, baseBranch: string): Promise<boolean> {
   const split = await splitRemoteBranch(
     ctx.environment.runner,
     ctx.repository.rootPath,
@@ -1262,11 +1191,7 @@ async function safeDetectGitState(
 function gitStatesEqual(a: GitState, b: GitState): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'ready' && b.kind === 'ready') {
-    return (
-      a.headSha === b.headSha &&
-      a.detached === b.detached &&
-      a.bisecting === b.bisecting
-    );
+    return a.headSha === b.headSha && a.detached === b.detached && a.bisecting === b.bisecting;
   }
   return true;
 }
@@ -1291,11 +1216,7 @@ function handleGitEnvironmentFailure(result: GitEnvironmentResult): void {
       setState({
         kind: 'unavailable',
         reason: '(unavailable)',
-        tooltip: t(
-          '{0}: git executable not found. {1}',
-          EXTENSION_NAME,
-          result.reason,
-        ),
+        tooltip: t('{0}: git executable not found. {1}', EXTENSION_NAME, result.reason),
       });
       return;
     case 'git-too-old': {
@@ -1304,11 +1225,7 @@ function handleGitEnvironmentFailure(result: GitEnvironmentResult): void {
       setState({
         kind: 'unavailable',
         reason: '(unavailable)',
-        tooltip: t(
-          '{0}: git {1} is too old. Requires git 2.30 or newer.',
-          EXTENSION_NAME,
-          version,
-        ),
+        tooltip: t('{0}: git {1} is too old. Requires git 2.30 or newer.', EXTENSION_NAME, version),
       });
       return;
     }
@@ -1346,10 +1263,7 @@ function handleRepositoryFailure(result: TargetRepositoryResult): void {
       setState({
         kind: 'unavailable',
         reason: '(unavailable)',
-        tooltip: t(
-          '{0}: workspace is a submodule; not supported in MVP.',
-          EXTENSION_NAME,
-        ),
+        tooltip: t('{0}: workspace is a submodule; not supported in MVP.', EXTENSION_NAME),
       });
       return;
     case 'timed-out':
@@ -1357,10 +1271,7 @@ function handleRepositoryFailure(result: TargetRepositoryResult): void {
       setState({
         kind: 'unavailable',
         reason: '(unavailable)',
-        tooltip: t(
-          '{0}: timed out waiting for the built-in Git extension.',
-          EXTENSION_NAME,
-        ),
+        tooltip: t('{0}: timed out waiting for the built-in Git extension.', EXTENSION_NAME),
       });
       return;
     case 'ok':
@@ -1371,9 +1282,7 @@ function handleRepositoryFailure(result: TargetRepositoryResult): void {
   }
 }
 
-function setState(
-  next: ExtensionState | ((prev: ExtensionState) => ExtensionState),
-): void {
+function setState(next: ExtensionState | ((prev: ExtensionState) => ExtensionState)): void {
   if (!runtime) return;
   const resolved =
     typeof next === 'function'
@@ -1404,8 +1313,7 @@ function renderStatusBar(state: ExtensionState): void {
       // "Usable" means we are actually highlighting: a base branch is
       // selected and no mid-operation / detached state is blocking it.
       const usable =
-        context.baseBranch !== undefined &&
-        !isStateBlockingHighlights(context.gitState);
+        context.baseBranch !== undefined && !isStateBlockingHighlights(context.gitState);
       statusBarItem.text = usable ? EXTENSION_NAME : strikethrough(EXTENSION_NAME);
       statusBarItem.tooltip = tooltipFor(context);
       return;
@@ -1435,10 +1343,7 @@ function tooltipFor(context: LiveContext): string {
     case 'merging':
       return t('{0}: highlighting paused while merge is in progress.', EXTENSION_NAME);
     case 'cherry-picking':
-      return t(
-        '{0}: highlighting paused while cherry-pick is in progress.',
-        EXTENSION_NAME,
-      );
+      return t('{0}: highlighting paused while cherry-pick is in progress.', EXTENSION_NAME);
     case 'reverting':
       return t('{0}: highlighting paused while revert is in progress.', EXTENSION_NAME);
     case 'ready':
@@ -1466,30 +1371,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('conflictLens.showOutputChannel', () => {
       runtime?.logChannel.show();
     }),
-    vscode.commands.registerCommand(
-      'conflictLens.selectBaseBranch',
-      selectBaseBranchCommand,
-    ),
-    vscode.commands.registerCommand('conflictLens.enable', () =>
-      setEnabledCommand(true),
-    ),
-    vscode.commands.registerCommand('conflictLens.disable', () =>
-      setEnabledCommand(false),
-    ),
+    vscode.commands.registerCommand('conflictLens.selectBaseBranch', selectBaseBranchCommand),
+    vscode.commands.registerCommand('conflictLens.enable', () => setEnabledCommand(true)),
+    vscode.commands.registerCommand('conflictLens.disable', () => setEnabledCommand(false)),
     vscode.commands.registerCommand('conflictLens.toggle', toggleEnabledCommand),
     vscode.commands.registerCommand('conflictLens.refresh', refreshCommand),
-    vscode.commands.registerCommand(
-      'conflictLens.showChangedFiles',
-      showChangedFilesCommand,
-    ),
-    vscode.commands.registerCommand(
-      'conflictLens.showBaseChanges',
-      showBaseChangesCommand,
-    ),
-    vscode.commands.registerCommand(
-      'conflictLens.previewConflict',
-      previewConflictCommand,
-    ),
+    vscode.commands.registerCommand('conflictLens.showChangedFiles', showChangedFilesCommand),
+    vscode.commands.registerCommand('conflictLens.showBaseChanges', showBaseChangesCommand),
+    vscode.commands.registerCommand('conflictLens.previewConflict', previewConflictCommand),
   );
 }
 
@@ -1574,9 +1463,7 @@ async function showChangedFilesCommand(): Promise<void> {
   }
   const ctx = currentState.context;
   if (!ctx.baseBranch) {
-    void vscode.window.showInformationMessage(
-      t('{0}: no base branch selected.', EXTENSION_NAME),
-    );
+    void vscode.window.showInformationMessage(t('{0}: no base branch selected.', EXTENSION_NAME));
     return;
   }
 
@@ -1588,9 +1475,7 @@ async function showChangedFilesCommand(): Promise<void> {
     files = await listChangedFilesOnBase(runner, repoRoot, baseBranch);
   } catch (err) {
     runtime?.logChannel.warn(`showChangedFiles failed: ${stringifyError(err)}`);
-    void vscode.window.showWarningMessage(
-      t('{0}: failed to list changed files.', EXTENSION_NAME),
-    );
+    void vscode.window.showWarningMessage(t('{0}: failed to list changed files.', EXTENSION_NAME));
     return;
   }
   if (files.length === 0) {
@@ -1605,9 +1490,7 @@ async function showChangedFilesCommand(): Promise<void> {
   // Some entries are files the base added (or that this branch deleted), so
   // they have no copy in the working tree. Flag them in the list and, when
   // picked, tell the user instead of silently failing to open a missing file.
-  const presence = await Promise.all(
-    files.map((f) => fileExists(path.join(repoRoot, f))),
-  );
+  const presence = await Promise.all(files.map((f) => fileExists(path.join(repoRoot, f))));
   interface ChangedFileItem extends vscode.QuickPickItem {
     readonly relativeFilePath: string;
     readonly existsLocally: boolean;
@@ -1671,17 +1554,13 @@ async function resolveActiveTarget(targetUri?: string): Promise<
   // direct invocations (command palette, right-click menu) that omit it.
   let doc: vscode.TextDocument | undefined;
   if (targetUri) {
-    doc = vscode.workspace.textDocuments.find(
-      (d) => d.uri.toString() === targetUri,
-    );
+    doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === targetUri);
   }
   if (!doc) {
     doc = vscode.window.activeTextEditor?.document;
   }
   if (!doc) {
-    void vscode.window.showInformationMessage(
-      t('{0}: no active editor.', EXTENSION_NAME),
-    );
+    void vscode.window.showInformationMessage(t('{0}: no active editor.', EXTENSION_NAME));
     return undefined;
   }
   if (currentState.kind !== 'live') {
@@ -1741,10 +1620,7 @@ async function resolveActiveTarget(targetUri?: string): Promise<
  * compared to the user's local buffer. Paired visually with the weak
  * (yellow) highlight, which marks the lines base touched.
  */
-async function showBaseChangesCommand(
-  line?: number,
-  targetUri?: string,
-): Promise<void> {
+async function showBaseChangesCommand(line?: number, targetUri?: string): Promise<void> {
   const target = await resolveActiveTarget(targetUri);
   if (!target) return;
   const { ctx, baseBranch, doc, relativeFilePath } = target;
@@ -1830,11 +1706,7 @@ async function openConflictView(
   // before the first event populated it).
   const mergeBaseSha =
     ctx.mergeBaseSha ??
-    (await resolveMergeBase(
-      ctx.environment.runner,
-      ctx.repository.rootPath,
-      baseBranch,
-    ));
+    (await resolveMergeBase(ctx.environment.runner, ctx.repository.rootPath, baseBranch));
   if (!mergeBaseSha) {
     void vscode.window.showInformationMessage(
       t('{0}: cannot determine merge-base with {1}.', EXTENSION_NAME, baseBranch),
@@ -1888,10 +1760,7 @@ async function openConflictView(
   // the source editor's languageId so previews match the original file even
   // when extension-based detection would differ.
   if (previewDoc.languageId !== doc.languageId) {
-    previewDoc = await vscode.languages.setTextDocumentLanguage(
-      previewDoc,
-      doc.languageId,
-    );
+    previewDoc = await vscode.languages.setTextDocumentLanguage(previewDoc, doc.languageId);
   }
   await vscode.window.showTextDocument(previewDoc, { preview: true });
 }
@@ -1949,10 +1818,7 @@ async function selectBaseBranchCommand(): Promise<void> {
   }
   if (listing.branches.length === 0) {
     void vscode.window.showWarningMessage(
-      t(
-        '{0}: no remote-tracking branches found. Run git fetch first.',
-        EXTENSION_NAME,
-      ),
+      t('{0}: no remote-tracking branches found. Run git fetch first.', EXTENSION_NAME),
     );
     return;
   }
@@ -1975,9 +1841,7 @@ async function selectBaseBranchCommand(): Promise<void> {
       .update(BASE_BRANCH_SETTING, picked.label, vscode.ConfigurationTarget.Workspace);
   } catch (err) {
     runtime?.logChannel.warn(`Saving baseBranch failed: ${stringifyError(err)}`);
-    void vscode.window.showWarningMessage(
-      t('{0}: failed to save selection.', EXTENSION_NAME),
-    );
+    void vscode.window.showWarningMessage(t('{0}: failed to save selection.', EXTENSION_NAME));
     return;
   }
   // Re-evaluation is triggered by onDidChangeConfiguration.

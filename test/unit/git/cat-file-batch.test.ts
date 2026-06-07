@@ -4,10 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import {
-  GitCatFileBatch,
-  parseHeaderLine,
-} from '../../../src/git/cat-file-batch';
+import { GitCatFileBatch, parseHeaderLine } from '../../../src/git/cat-file-batch';
 
 function run(
   command: string,
@@ -85,9 +82,7 @@ describe('GitCatFileBatch (integration)', () => {
   let batch: GitCatFileBatch;
 
   beforeAll(async () => {
-    const repo = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-batch-')),
-    );
+    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-batch-')));
     await run('git', ['init', '-q', '-b', 'main'], repo);
     await run('git', ['config', 'user.email', 't@e'], repo);
     await run('git', ['config', 'user.name', 'Test'], repo);
@@ -101,12 +96,8 @@ describe('GitCatFileBatch (integration)', () => {
     await run('git', ['add', '.'], repo);
     await run('git', ['commit', '-q', '-m', 'init'], repo);
 
-    const fileBlob = (
-      await run('git', ['rev-parse', 'HEAD:file.txt'], repo)
-    ).stdout.trim();
-    const bigFileBlob = (
-      await run('git', ['rev-parse', 'HEAD:big.txt'], repo)
-    ).stdout.trim();
+    const fileBlob = (await run('git', ['rev-parse', 'HEAD:file.txt'], repo)).stdout.trim();
+    const bigFileBlob = (await run('git', ['rev-parse', 'HEAD:big.txt'], repo)).stdout.trim();
     const spacePathBlob = (
       await run('git', ['rev-parse', 'HEAD:dir with space/foo.txt'], repo)
     ).stdout.trim();

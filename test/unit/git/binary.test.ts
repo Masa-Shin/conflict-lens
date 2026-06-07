@@ -58,7 +58,9 @@ describe('compareMajorMinor', () => {
 });
 
 describe('resolveGitEnvironment', () => {
-  function makeExt(overrides: Partial<VscodeExtensionLike & { api?: VscodeGitApi }>): VscodeExtensionLike {
+  function makeExt(
+    overrides: Partial<VscodeExtensionLike & { api?: VscodeGitApi }>,
+  ): VscodeExtensionLike {
     const baseApi: VscodeGitApi = {
       git: { path: '/usr/bin/git' },
       repositories: [],
@@ -68,9 +70,8 @@ describe('resolveGitEnvironment', () => {
     const ext: VscodeExtensionLike = {
       isActive: overrides.isActive ?? true,
       activate: overrides.activate ?? (() => Promise.resolve(undefined)),
-      exports: 'exports' in overrides
-        ? overrides.exports
-        : { getAPI: () => overrides.api ?? baseApi },
+      exports:
+        'exports' in overrides ? overrides.exports : { getAPI: () => overrides.api ?? baseApi },
     };
     return ext;
   }

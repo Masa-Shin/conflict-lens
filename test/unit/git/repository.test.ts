@@ -3,10 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import {
-  isFileWithinRepository,
-  isSamePathOrUnder,
-} from '../../../src/git/repository';
+import { isFileWithinRepository, isSamePathOrUnder } from '../../../src/git/repository';
 
 describe('isSamePathOrUnder', () => {
   it('returns true for the same canonical path', () => {

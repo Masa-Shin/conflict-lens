@@ -10,11 +10,7 @@ import {
 import type { BlobReader } from '../git/blob';
 import type { GitRunner } from '../git/runner';
 import { t } from '../l10n';
-import {
-  cacheKeyFor,
-  escapeMarkdown,
-  sizeOfRanges,
-} from './weak-decoration-helpers';
+import { cacheKeyFor, escapeMarkdown, sizeOfRanges } from './weak-decoration-helpers';
 
 export { cacheKeyFor, escapeMarkdown, sizeOfRanges };
 
@@ -173,10 +169,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
   private baseBranchLabel: string;
   private disposed = false;
 
-  constructor(
-    initialSettings: WeakDecorationSettings,
-    baseBranchLabel: string,
-  ) {
+  constructor(initialSettings: WeakDecorationSettings, baseBranchLabel: string) {
     this.cache = new ByteLruCache(CACHE_MAX_BYTES, CACHE_MAX_ENTRY_BYTES, sizeOfComputed);
     this.baseDiffCache = new ByteLruCache(
       BASE_DIFF_CACHE_MAX_BYTES,
@@ -231,10 +224,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     let entry = this.inflight.get(cacheKey);
     if (!entry) {
       const rightContent = document.getText();
-      if (
-        document.lineCount > MAX_HIGHLIGHT_LINES ||
-        rightContent.length > MAX_HIGHLIGHT_CHARS
-      ) {
+      if (document.lineCount > MAX_HIGHLIGHT_LINES || rightContent.length > MAX_HIGHLIGHT_CHARS) {
         // Too large to be hand-written; skip the git-side work. Mark it
         // suppressed (not clean) so the UI can flag that highlights were
         // withheld, and cache it so a same-version re-entry stays free.
@@ -369,8 +359,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
    * (callers should then re-apply to every visible editor).
    */
   refreshVisuals(next: WeakDecorationSettings, baseBranchLabel: string): boolean {
-    const visualChanged =
-      next.showOverviewRuler !== this.settings.showOverviewRuler;
+    const visualChanged = next.showOverviewRuler !== this.settings.showOverviewRuler;
     const labelChanged = baseBranchLabel !== this.baseBranchLabel;
     if (!visualChanged && !labelChanged) return false;
     this.settings = next;
@@ -433,22 +422,15 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
       backgroundColor: new vscode.ThemeColor('conflictLens.changedLineBackground'),
     };
     if (this.settings.showOverviewRuler) {
-      options.overviewRulerColor = new vscode.ThemeColor(
-        'conflictLens.changedLineBackground',
-      );
+      options.overviewRulerColor = new vscode.ThemeColor('conflictLens.changedLineBackground');
       options.overviewRulerLane = vscode.OverviewRulerLane.Center;
     }
     return vscode.window.createTextEditorDecorationType(options);
   }
 
-  private buildHoverMessage(
-    startLine: number,
-    documentUri: vscode.Uri,
-  ): vscode.MarkdownString {
+  private buildHoverMessage(startLine: number, documentUri: vscode.Uri): vscode.MarkdownString {
     const baseEscaped = escapeMarkdown(this.baseBranchLabel);
-    const md = new vscode.MarkdownString(
-      t('Changed relative to {0}', baseEscaped),
-    );
+    const md = new vscode.MarkdownString(t('Changed relative to {0}', baseEscaped));
     // Carry the hovered document's URI in the command args. Hovering does
     // not move focus, so in a split layout `vscode.window.activeTextEditor`
     // can point at a different file than the one under the cursor; without
@@ -466,10 +448,7 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
     // Whitelist only our own commands so generic `command:?` URIs cannot
     // execute when the user hovers a decoration in a hostile workspace.
     md.isTrusted = {
-      enabledCommands: [
-        'conflictLens.showBaseChanges',
-        'conflictLens.previewConflict',
-      ],
+      enabledCommands: ['conflictLens.showBaseChanges', 'conflictLens.previewConflict'],
     };
     return md;
   }

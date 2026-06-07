@@ -31,10 +31,10 @@ export async function showBlob(
   relativeFilePath: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<string> {
-  const result = await runner.run(
-    ['show', '--end-of-options', `${ref}:${relativeFilePath}`],
-    { cwd: repoRootPath, signal: options.signal },
-  );
+  const result = await runner.run(['show', '--end-of-options', `${ref}:${relativeFilePath}`], {
+    cwd: repoRootPath,
+    signal: options.signal,
+  });
   if (result.exitCode !== 0) {
     throw new Error(
       `git show ${ref}:${relativeFilePath} exited with ${result.exitCode}: ${result.stderr.trim()}`,
@@ -47,10 +47,7 @@ export async function showBlob(
  * Build a `BlobReader` backed by one-shot `git show` spawns. Used by
  * tests and as a fallback when a batch reader is not available.
  */
-export function createBlobReaderFromRunner(
-  runner: GitRunner,
-  repoRootPath: string,
-): BlobReader {
+export function createBlobReaderFromRunner(runner: GitRunner, repoRootPath: string): BlobReader {
   return (ref, relativeFilePath, options) =>
     showBlob(runner, repoRootPath, ref, relativeFilePath, options);
 }

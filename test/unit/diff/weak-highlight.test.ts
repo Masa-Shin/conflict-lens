@@ -35,42 +35,26 @@ describe('mapHunkToRight (pure)', () => {
   const identity = (n: number): number | undefined => (n >= 1 && n <= 10 ? n : undefined);
 
   it('change hunk with both endpoints surviving', () => {
-    const r = mapHunkToRight(
-      { oldStart: 3, oldCount: 2, newStart: 3, newCount: 2 },
-      identity,
-      10,
-    );
+    const r = mapHunkToRight({ oldStart: 3, oldCount: 2, newStart: 3, newCount: 2 }, identity, 10);
     expect(r).toEqual({ startLine: 3, endLine: 4, insertion: false });
   });
 
   it('pure addition uses the line after the insertion point', () => {
-    const r = mapHunkToRight(
-      { oldStart: 5, oldCount: 0, newStart: 6, newCount: 3 },
-      identity,
-      10,
-    );
+    const r = mapHunkToRight({ oldStart: 5, oldCount: 0, newStart: 6, newCount: 3 }, identity, 10);
     expect(r).toEqual({ startLine: 6, endLine: 6, insertion: true });
   });
 
   it('pure addition with shifted mapping', () => {
     // Right side has 2 extra leading lines (every left N → right N+2).
     const shifted = (n: number) => (n >= 1 && n <= 5 ? n + 2 : undefined);
-    const r = mapHunkToRight(
-      { oldStart: 3, oldCount: 0, newStart: 4, newCount: 2 },
-      shifted,
-      7,
-    );
+    const r = mapHunkToRight({ oldStart: 3, oldCount: 0, newStart: 4, newCount: 2 }, shifted, 7);
     expect(r).toEqual({ startLine: 6, endLine: 6, insertion: true });
   });
 
   it('hunk whose endpoints survive but middle is lost expands to the survivors', () => {
     // Left line 5 deleted on right; 4 and 6 survive.
     const partial = (n: number) => (n === 5 ? undefined : n);
-    const r = mapHunkToRight(
-      { oldStart: 4, oldCount: 3, newStart: 4, newCount: 3 },
-      partial,
-      10,
-    );
+    const r = mapHunkToRight({ oldStart: 4, oldCount: 3, newStart: 4, newCount: 3 }, partial, 10);
     expect(r).toEqual({ startLine: 4, endLine: 6, insertion: false });
   });
 
@@ -106,9 +90,7 @@ async function makeFixture(): Promise<FixtureRepo> {
   //   merge-base: file.txt has "L1..L5"
   //   on base/main: line 3 changed to "L3-base"
   //   on feature (HEAD): an extra line prepended
-  const repo = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-weak-')),
-  );
+  const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-weak-')));
   await run('git', ['init', '-q', '-b', 'main'], repo);
   await run('git', ['config', 'user.email', 't@e'], repo);
   await run('git', ['config', 'user.name', 'Test'], repo);
@@ -202,5 +184,4 @@ describe('computeWeakHighlights (integration)', () => {
     });
     expect(ranges).toEqual([]);
   });
-
 });

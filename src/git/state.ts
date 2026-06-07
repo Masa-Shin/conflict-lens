@@ -188,10 +188,7 @@ export function isStateBlockingHighlights(state: GitState): boolean {
 }
 
 function emptyMarkers(): Record<MidOpKey, boolean> {
-  return Object.fromEntries(MID_OP_PATHS.map((k) => [k, false])) as Record<
-    MidOpKey,
-    boolean
-  >;
+  return Object.fromEntries(MID_OP_PATHS.map((k) => [k, false])) as Record<MidOpKey, boolean>;
 }
 
 function resolveRepoRelative(repoRootPath: string, candidate: string): string {

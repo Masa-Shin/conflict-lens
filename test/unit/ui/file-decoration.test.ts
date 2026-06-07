@@ -60,9 +60,7 @@ describe('FileDecorationCoordinator', () => {
   it('returns undefined for URIs outside the repo root', async () => {
     listChanged.mockResolvedValueOnce(['a.txt']);
     await coord.refresh(makeInputs());
-    expect(
-      coord.provideFileDecoration(Uri.file('/elsewhere/a.txt')),
-    ).toBeUndefined();
+    expect(coord.provideFileDecoration(Uri.file('/elsewhere/a.txt'))).toBeUndefined();
   });
 
   it('skips redundant refresh when the cache key is unchanged', async () => {
@@ -86,20 +84,14 @@ describe('FileDecorationCoordinator', () => {
     listChanged.mockResolvedValueOnce(['stale.txt']);
     await coord.refresh(makeInputs(), () => true);
 
-    expect(
-      coord.provideFileDecoration(Uri.file('/tmp/repo/stale.txt')),
-    ).toBeUndefined();
+    expect(coord.provideFileDecoration(Uri.file('/tmp/repo/stale.txt'))).toBeUndefined();
     // The trio was never finalized, so a later refresh is free to run.
-    expect(
-      coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'stale.txt'),
-    ).toBeUndefined();
+    expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'stale.txt')).toBeUndefined();
 
     listChanged.mockResolvedValueOnce(['fresh.txt']);
     await coord.refresh(makeInputs(), () => false);
     expect(listChanged).toHaveBeenCalledTimes(2);
-    expect(
-      coord.provideFileDecoration(Uri.file('/tmp/repo/fresh.txt')),
-    ).toBeDefined();
+    expect(coord.provideFileDecoration(Uri.file('/tmp/repo/fresh.txt'))).toBeDefined();
   });
 
   it('clear() empties the set and forces the next refresh to run', async () => {
@@ -154,17 +146,13 @@ describe('FileDecorationCoordinator', () => {
 
       // Not finalized: the trio is still unknown, so callers fall back to
       // their own pipeline instead of assuming the file is unchanged.
-      expect(
-        coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt'),
-      ).toBeUndefined();
+      expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt')).toBeUndefined();
 
       // Not stuck: the same trio is fetched again rather than short-circuited.
       listChanged.mockResolvedValueOnce(['a.txt']);
       await coord.refresh(makeInputs());
       expect(listChanged).toHaveBeenCalledTimes(2);
-      expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt')).toBe(
-        true,
-      );
+      expect(coord.hasBaseChange('origin/main', 'mb123', 'tip123', 'a.txt')).toBe(true);
     });
   });
 

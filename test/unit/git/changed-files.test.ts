@@ -50,9 +50,7 @@ describe('listChangedFilesOnBase', () => {
   });
 
   async function newRepo(): Promise<string> {
-    const repo = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-cf-')),
-    );
+    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-cf-')));
     await run('git', ['init', '-q', '-b', 'main'], repo);
     await run('git', ['config', 'user.email', 't@e'], repo);
     await run('git', ['config', 'user.name', 'Test'], repo);
@@ -94,17 +92,13 @@ describe('listChangedFilesOnBase', () => {
     await run('git', ['checkout', '-q', 'main'], repo);
     await commit(repo, 'dir name/file.txt', 'a-base\n', 'base');
     await run('git', ['checkout', '-q', 'feature'], repo);
-    expect(await listChangedFilesOnBase(runner, repo, 'main')).toEqual([
-      'dir name/file.txt',
-    ]);
+    expect(await listChangedFilesOnBase(runner, repo, 'main')).toEqual(['dir name/file.txt']);
   });
 
   it('throws on an unknown ref so callers can tell failure from an empty diff', async () => {
     const repo = await newRepo();
     teardown.push(repo);
     await commit(repo, 'a.txt', 'a\n', 'mb');
-    await expect(
-      listChangedFilesOnBase(runner, repo, 'origin/never'),
-    ).rejects.toThrow();
+    await expect(listChangedFilesOnBase(runner, repo, 'origin/never')).rejects.toThrow();
   });
 });

@@ -92,9 +92,7 @@ export class GitCatFileBatch {
   constructor(private readonly options: GitCatFileBatchOptions) {
     const cap = options.maxBlobBytes;
     this.maxBlobBytes =
-      typeof cap === 'number' && Number.isFinite(cap) && cap > 0
-        ? cap
-        : DEFAULT_MAX_BLOB_BYTES;
+      typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? cap : DEFAULT_MAX_BLOB_BYTES;
   }
 
   /**
@@ -173,16 +171,12 @@ export class GitCatFileBatch {
   private ensureChild(): void {
     if (this.child && !this.child.killed && this.child.exitCode === null) return;
     const env: NodeJS.ProcessEnv = { ...process.env, ...SECURE_ENV };
-    const child = spawn(
-      this.options.gitPath,
-      [...SECURE_ARGS, 'cat-file', '--batch'],
-      {
-        cwd: this.options.cwd,
-        env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true,
-      },
-    );
+    const child = spawn(this.options.gitPath, [...SECURE_ARGS, 'cat-file', '--batch'], {
+      cwd: this.options.cwd,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
     child.once('error', (err) => this.failAll(err));
     child.once('close', (code, signal) => {
       if (this.disposed) return;
@@ -380,9 +374,7 @@ export function createBlobReaderFromBatch(batch: GitCatFileBatch): BlobReader {
       throw new Error(`git cat-file --batch: ${spec} not found`);
     }
     if (result.kind === 'too-large') {
-      throw new Error(
-        `git cat-file --batch: ${spec} is too large (${result.size} bytes)`,
-      );
+      throw new Error(`git cat-file --batch: ${spec} is too large (${result.size} bytes)`);
     }
     throw new Error(`git cat-file --batch: ${spec} is ambiguous`);
   };

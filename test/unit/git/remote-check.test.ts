@@ -4,10 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import {
-  checkRemoteForUpdates,
-  splitRemoteBranch,
-} from '../../../src/git/remote-check';
+import { checkRemoteForUpdates, splitRemoteBranch } from '../../../src/git/remote-check';
 import { createGitRunner } from '../../../src/git/runner';
 
 const runner = createGitRunner('git');
@@ -48,9 +45,7 @@ interface Fixture {
  * the tests to mutate the remote and observe the difference.
  */
 async function makeFixture(): Promise<Fixture> {
-  const tmpRoot = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-rc-')),
-  );
+  const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-rc-')));
   const seedRepo = path.join(tmpRoot, 'seed');
   fs.mkdirSync(seedRepo);
   await run('git', ['init', '-q', '-b', 'main'], seedRepo);
@@ -96,17 +91,16 @@ describe('splitRemoteBranch', () => {
   it('returns undefined when the prefix is not a known remote', async () => {
     const fx = await makeFixture();
     teardown.push(path.dirname(fx.localRepo));
-    expect(
-      await splitRemoteBranch(runner, fx.localRepo, 'unknown/main'),
-    ).toBeUndefined();
+    expect(await splitRemoteBranch(runner, fx.localRepo, 'unknown/main')).toBeUndefined();
   });
 
   it('handles a branch name with a slash', async () => {
     const fx = await makeFixture();
     teardown.push(path.dirname(fx.localRepo));
-    expect(
-      await splitRemoteBranch(runner, fx.localRepo, 'origin/release/2026.06'),
-    ).toEqual({ remote: 'origin', branch: 'release/2026.06' });
+    expect(await splitRemoteBranch(runner, fx.localRepo, 'origin/release/2026.06')).toEqual({
+      remote: 'origin',
+      branch: 'release/2026.06',
+    });
   });
 });
 
@@ -152,11 +146,7 @@ describe('checkRemoteForUpdates', () => {
   it('reports error from the ls-remote path when the remote ref does not exist', async () => {
     const fx = await makeFixture();
     teardown.push(path.dirname(fx.localRepo));
-    const result = await checkRemoteForUpdates(
-      runner,
-      fx.localRepo,
-      'origin/not-a-branch',
-    );
+    const result = await checkRemoteForUpdates(runner, fx.localRepo, 'origin/not-a-branch');
     expect(result.kind).toBe('error');
     // Must be the remote-side failure, not the local-tracking-ref path —
     // those two share the same `kind` and are only told apart by `reason`.
@@ -181,11 +171,7 @@ describe('checkRemoteForUpdates', () => {
     await commit(pusher, 'extra.txt', 'extra\n', 'untracked branch');
     await run('git', ['push', '-q', 'origin', 'untracked'], pusher);
 
-    const result = await checkRemoteForUpdates(
-      runner,
-      fx.localRepo,
-      'origin/untracked',
-    );
+    const result = await checkRemoteForUpdates(runner, fx.localRepo, 'origin/untracked');
     expect(result.kind).toBe('error');
     // Pin the specific branch: the local tracking ref is the one missing.
     if (result.kind === 'error') {

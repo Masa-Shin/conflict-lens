@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  cacheKeyFor,
-  escapeMarkdown,
-  sizeOfRanges,
-} from '../../../src/ui/weak-decoration-helpers';
+import { cacheKeyFor, escapeMarkdown, sizeOfRanges } from '../../../src/ui/weak-decoration-helpers';
 
 describe('cacheKeyFor', () => {
   const inputs = {
@@ -14,9 +10,7 @@ describe('cacheKeyFor', () => {
   };
 
   it('produces a stable key for identical inputs', () => {
-    expect(cacheKeyFor('src/a.ts', inputs, 7)).toBe(
-      cacheKeyFor('src/a.ts', inputs, 7),
-    );
+    expect(cacheKeyFor('src/a.ts', inputs, 7)).toBe(cacheKeyFor('src/a.ts', inputs, 7));
   });
 
   it('differs when any field differs', () => {

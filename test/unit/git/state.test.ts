@@ -5,11 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createGitRunner } from '../../../src/git/runner';
-import {
-  detectGitState,
-  isStateBlockingHighlights,
-  statusLabelFor,
-} from '../../../src/git/state';
+import { detectGitState, isStateBlockingHighlights, statusLabelFor } from '../../../src/git/state';
 
 const runner = createGitRunner('git');
 
@@ -41,9 +37,7 @@ function run(
 }
 
 async function initRepoWithCommit(): Promise<string> {
-  const dir = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-state-')),
-  );
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-state-')));
   await run('git', ['init', '-q', '-b', 'main'], dir);
   await run('git', ['config', 'user.email', 't@e'], dir);
   await run('git', ['config', 'user.name', 'Test'], dir);
@@ -56,9 +50,7 @@ async function initRepoWithCommit(): Promise<string> {
 }
 
 async function initRepoNoCommit(): Promise<string> {
-  const dir = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-state-')),
-  );
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-state-')));
   await run('git', ['init', '-q', '-b', 'main'], dir);
   return dir;
 }
@@ -180,19 +172,21 @@ describe('detectGitState', () => {
 
 describe('statusLabelFor', () => {
   it('returns "" for a vanilla ready state', () => {
-    expect(statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: false })).toBe('');
+    expect(
+      statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: false }),
+    ).toBe('');
   });
 
   it('returns "(detached)" / "(bisecting)" / "(detached, bisecting)"', () => {
-    expect(statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: false })).toBe(
-      '(detached)',
-    );
-    expect(statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: true })).toBe(
-      '(bisecting)',
-    );
-    expect(statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: true })).toBe(
-      '(detached, bisecting)',
-    );
+    expect(
+      statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: false }),
+    ).toBe('(detached)');
+    expect(
+      statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: true }),
+    ).toBe('(bisecting)');
+    expect(
+      statusLabelFor({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: true }),
+    ).toBe('(detached, bisecting)');
   });
 
   it.each([
@@ -209,18 +203,38 @@ describe('statusLabelFor', () => {
 describe('isStateBlockingHighlights', () => {
   it('is false only for an attached ready state', () => {
     expect(
-      isStateBlockingHighlights({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: false }),
+      isStateBlockingHighlights({
+        kind: 'ready',
+        headSha: 'a'.repeat(40),
+        detached: false,
+        bisecting: false,
+      }),
     ).toBe(false);
     // Bisecting on a branch is fine; the branch still frames "your work".
     expect(
-      isStateBlockingHighlights({ kind: 'ready', headSha: 'a'.repeat(40), detached: false, bisecting: true }),
+      isStateBlockingHighlights({
+        kind: 'ready',
+        headSha: 'a'.repeat(40),
+        detached: false,
+        bisecting: true,
+      }),
     ).toBe(false);
     // Detached HEAD has no base branch to diff against → suppressed.
     expect(
-      isStateBlockingHighlights({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: false }),
+      isStateBlockingHighlights({
+        kind: 'ready',
+        headSha: 'a'.repeat(40),
+        detached: true,
+        bisecting: false,
+      }),
     ).toBe(true);
     expect(
-      isStateBlockingHighlights({ kind: 'ready', headSha: 'a'.repeat(40), detached: true, bisecting: true }),
+      isStateBlockingHighlights({
+        kind: 'ready',
+        headSha: 'a'.repeat(40),
+        detached: true,
+        bisecting: true,
+      }),
     ).toBe(true);
     expect(isStateBlockingHighlights({ kind: 'no-commits' })).toBe(true);
     expect(isStateBlockingHighlights({ kind: 'rebasing' })).toBe(true);

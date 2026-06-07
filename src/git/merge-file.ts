@@ -85,9 +85,7 @@ export async function runMergeFile(
     );
 
     if (result.timedOut || result.truncated || result.exitCode < 0 || result.exitCode > 127) {
-      throw new Error(
-        `git merge-file failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
-      );
+      throw new Error(`git merge-file failed (exit ${result.exitCode}): ${result.stderr.trim()}`);
     }
     return {
       content: result.stdout,
