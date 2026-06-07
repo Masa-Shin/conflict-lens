@@ -81,13 +81,6 @@ const CONFLICT_PREVIEW_SCHEME = 'conflict-lens-preview';
 interface RuntimeState {
   logChannel: vscode.LogOutputChannel;
   statusBarItem: vscode.StatusBarItem;
-  /**
-   * Secondary status-bar item shown only while the active editor is
-   * changed-on-base but has its weak highlights suppressed because the file
-   * is too large. Lets the user tell "no highlights" apart from "highlights
-   * deliberately off".
-   */
-  suppressedStatusItem: vscode.StatusBarItem;
   weakDecorations: WeakDecorationCoordinator;
   fileDecorations: FileDecorationCoordinator;
   conflictPreviews: ConflictPreviewContentProvider;
@@ -164,24 +157,6 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
-  // Secondary status-bar item: surfaced only while the active file is changed
-  // on the base but too large to highlight, so "no highlights" reads
-  // differently from "highlights deliberately withheld". Configured here but
-  // left hidden; `applyActiveOutcome` shows/hides it per active editor.
-  const suppressedStatusItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    99,
-  );
-  suppressedStatusItem.name = t('{0}: highlights suppressed', EXTENSION_NAME);
-  suppressedStatusItem.text = t('$(eye-closed) {0}: too large to highlight', EXTENSION_NAME);
-  suppressedStatusItem.tooltip = t(
-    '{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes.',
-    EXTENSION_NAME,
-  );
-  suppressedStatusItem.command = 'conflictLens.showBaseChanges';
-  // Hidden until the active editor is actually a suppressed file.
-  context.subscriptions.push(suppressedStatusItem);
-
   // Build the coordinators and content providers that own the actual UI:
   //  - weakDecorations: the in-editor base-change highlights.
   //  - fileDecorations: the Explorer badges + the changed-files set.
@@ -214,7 +189,6 @@ export function activate(context: vscode.ExtensionContext): void {
   runtime = {
     logChannel,
     statusBarItem,
-    suppressedStatusItem,
     weakDecorations,
     fileDecorations,
     conflictPreviews,
@@ -815,21 +789,22 @@ async function refreshDecorationsNow(): Promise<void> {
  *    menu ("Preview Conflict" / "Show Base Branch Changes"), which only makes
  *    sense when highlights are actually shown. Mirrored into a context key
  *    because `when` clauses can only read context keys, not extension state.
- *  - the suppression status-bar item — shown only when the file is changed
- *    but its highlights were deliberately withheld, so the user can tell that
- *    apart from a genuinely unchanged file.
+ *  - the main status-bar item — its appearance encodes the active file's
+ *    state (highlighted / changed-but-too-large / unchanged); see
+ *    `renderStatusBar`. The outcome is stashed so a later state change can
+ *    re-render with the same per-file context.
  */
 let lastHasHighlights: boolean | undefined;
+let lastActiveOutcome: HighlightOutcome = 'clean';
 function applyActiveOutcome(outcome: HighlightOutcome): void {
   const hasHighlights = outcome === 'highlighted';
   if (hasHighlights !== lastHasHighlights) {
     lastHasHighlights = hasHighlights;
     void vscode.commands.executeCommand('setContext', 'conflictLens.hasHighlights', hasHighlights);
   }
-  const item = runtime?.suppressedStatusItem;
-  if (item) {
-    if (outcome === 'suppressed') item.show();
-    else item.hide();
+  if (outcome !== lastActiveOutcome) {
+    lastActiveOutcome = outcome;
+    renderStatusBar(currentState);
   }
 }
 
@@ -1297,7 +1272,9 @@ function renderStatusBar(state: ExtensionState): void {
   const { statusBarItem } = runtime;
   // The label is kept to the bare extension name to save space; the base
   // branch and git state live in the tooltip. When highlighting cannot run,
-  // the name is struck through so the disabled state reads at a glance.
+  // the name is struck through; when the active file is changed but too large
+  // to highlight, an eye icon replaces the plain name.
+  statusBarItem.command = 'conflictLens.selectBaseBranch';
   switch (state.kind) {
     case 'initializing':
       statusBarItem.text = EXTENSION_NAME;
@@ -1314,7 +1291,26 @@ function renderStatusBar(state: ExtensionState): void {
       // selected and no mid-operation / detached state is blocking it.
       const usable =
         context.baseBranch !== undefined && !isStateBlockingHighlights(context.gitState);
-      statusBarItem.text = usable ? EXTENSION_NAME : strikethrough(EXTENSION_NAME);
+      if (!usable) {
+        // Nothing is highlighted and no badges are painted, so strike the
+        // name through regardless of which file is active.
+        statusBarItem.text = strikethrough(EXTENSION_NAME);
+        statusBarItem.tooltip = tooltipFor(context);
+        return;
+      }
+      // The extension is live and highlighting; the active file's outcome
+      // only switches in the eye icon for the too-large case. A genuinely
+      // unchanged file is not a disabled state, so it keeps the plain name —
+      // the strike-through is reserved for the not-usable branch above.
+      if (lastActiveOutcome === 'suppressed') {
+        statusBarItem.text = `$(eye-closed) ${EXTENSION_NAME}`;
+        statusBarItem.tooltip = t(
+          '{0}: this file is changed on the base branch, but it is too large to highlight.',
+          EXTENSION_NAME,
+        );
+        return;
+      }
+      statusBarItem.text = EXTENSION_NAME;
       statusBarItem.tooltip = tooltipFor(context);
       return;
     }
