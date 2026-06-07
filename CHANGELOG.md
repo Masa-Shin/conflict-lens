@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-06-07
+
+### Fixed
+
+- Automatic base branch detection was never reaching repositories that don't use `origin/main`. The `conflictLens.baseBranch` default was `origin/main` rather than empty, so the extension treated it as an explicit setting and warned `'origin/main' is invalid` on `master`-based or non-`origin` repositories instead of falling back to detection. The default is now empty, so detection (remote default branch → `main` → `master`) runs out of the box.
+
 ## [0.0.2] - 2026-06-07
 
 ### Fixed

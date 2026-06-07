@@ -126,7 +126,7 @@ How to open:
 | Key | Default | Range | Description |
 |---|---|---|---|
 | `conflictLens.enabled` | `true` | bool | Turn the whole extension on/off |
-| `conflictLens.baseBranch` | `origin/main` | string | Comparison target. Empty for auto-detection |
+| `conflictLens.baseBranch` | `""` (auto-detect) | string | Comparison target. Empty for auto-detection |
 | `conflictLens.remoteName` | `origin` | string | Remote name used for auto-detection |
 | `conflictLens.showOverviewRuler` | `true` | bool | Show highlight positions on the scrollbar |
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Show badges in the Explorer |
