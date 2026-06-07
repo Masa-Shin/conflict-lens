@@ -177,7 +177,7 @@
     "vscode:prepublish": "npm run build:prod"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^25.9.2",
     "@types/vscode": "^1.74.0",
     "esbuild": "^0.28.0",
     "oxfmt": "^0.53.0",
