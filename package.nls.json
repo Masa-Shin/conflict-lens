@@ -14,7 +14,6 @@
   "conflictLens.command.category": "Conflict Lens",
 
   "conflictLens.config.enabled.description": "Enable or disable Conflict Lens.",
-  "conflictLens.config.baseBranch.description": "Remote-tracking branch to compare against (e.g. origin/main). If unset, Conflict Lens tries to detect a default.",
   "conflictLens.config.remoteName.description": "Remote name used as the prefix for auto-detection candidates (<remoteName>/HEAD, <remoteName>/main, <remoteName>/master). Defaults to 'origin'.",
   "conflictLens.config.showOverviewRuler.description": "Show markers in the editor overview ruler.",
   "conflictLens.config.showFileDecorationBadges.description": "Show badges on file names that the base branch has changed.",

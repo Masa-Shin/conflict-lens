@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-06-07
+
+Maintenance release; no user-facing changes.
+
+### Internal
+
+- Added Dependabot configuration for npm and GitHub Actions dependencies.
+- Raised the test timeout for git-backed test suites so they don't flake on the Windows CI runner.
+
 ## [0.0.3] - 2026-06-07
 
 ### Fixed
