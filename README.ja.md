@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-[![VS Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/Masa-Shin.conflict-lens)](https://marketplace.visualstudio.com/items?itemName=Masa-Shin.conflict-lens)
+[![VS Marketplace Version](https://vsmarketplacebadges.dev/version-short/Masa-Shin.conflict-lens.svg)](https://marketplace.visualstudio.com/items?itemName=Masa-Shin.conflict-lens)
 [![CI](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
