@@ -93,7 +93,7 @@ export class FileDecorationCoordinator implements vscode.FileDecorationProvider,
     // The raw fsPath looks outside the realpath'd root — either genuinely
     // outside, or the workspace was opened through a symlink so the two
     // namespaces differ. The in-editor highlight path realpaths the file
-    // (isFileWithinRepository), so mirror it here to stay in agreement.
+    // (repoRelativePathViaRealpath), so mirror it here to stay in agreement.
     return this.decorationViaRealpath(uri, root);
   }
 

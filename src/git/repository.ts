@@ -192,37 +192,24 @@ export function isSamePathOrUnder(candidatePath: string, containerPath: string):
 }
 
 /**
- * Returns true iff `filePath` is a regular file inside `repoRootPath`,
- * after canonicalization. Rejects:
- *  - paths that don't exist
- *  - symlinks (per spec §3.1.3 / §5.5 B5; symlinks can point outside the
- *    repository and leak file contents)
- *  - paths whose realpath escapes `repoRootPath`
+ * Repo-relative, forward-slashed path for `filePath` after realpath
+ * canonicalization, or `undefined` when the path is a symlink, does not
+ * exist, is the repo root itself, or resolves outside the repo.
  *
+ * Canonicalization rejects (per spec §3.1.3 / §5.5 B5): symlinks, which can
+ * point outside the repository and leak file contents; and paths whose
+ * realpath escapes `repoRootPath` (e.g. via a parent-dir symlink).
  * `repoRootPath` is expected to be already canonical (e.g. from
  * `TargetRepository.rootPath`).
  *
- * This is async because it becomes a per-file hot path once the
- * FileDecorationProvider lands (Phase 9). Sync I/O here would block the
- * extension host on every Explorer redraw (spec §5.4).
- */
-export async function isFileWithinRepository(
-  filePath: string,
-  repoRootPath: string,
-): Promise<boolean> {
-  return (await canonicalizeWithin(filePath, repoRootPath)) !== undefined;
-}
-
-/**
- * Repo-relative, forward-slashed path for `filePath` after the SAME
- * realpath canonicalization `isFileWithinRepository` performs, or
- * `undefined` when the path is a symlink, does not exist, is the repo root
- * itself, or resolves outside the repo.
- *
  * The Explorer hands `provideFileDecoration` URIs in the workspace's
  * namespace, which differs from the realpath'd repo root when the workspace
- * is opened through a symlink. Resolving the file the way the highlight path
- * does keeps the file-tree badge and the in-editor highlight in agreement.
+ * is opened through a symlink. Resolving the file this way keeps the
+ * file-tree badge and the in-editor highlight in agreement.
+ *
+ * This is async because it becomes a per-file hot path in the
+ * FileDecorationProvider. Sync I/O here would block the extension host on
+ * every Explorer redraw (spec §5.4).
  */
 export async function repoRelativePathViaRealpath(
   filePath: string,
@@ -236,8 +223,8 @@ export async function repoRelativePathViaRealpath(
 }
 
 /**
- * Shared canonicalization behind `isFileWithinRepository` and
- * `repoRelativePathViaRealpath`. Returns the realpath'd file and root (with
+ * Canonicalization behind `repoRelativePathViaRealpath`. Returns the
+ * realpath'd file and root (with
  * the Windows namespace prefix stripped so they share a comparison basis)
  * when `filePath` is a non-symlink regular path at or under `repoRootPath`;
  * `undefined` otherwise.
