@@ -153,12 +153,12 @@
       "editor/context": [
         {
           "command": "conflictLens.showBaseChanges",
-          "when": "conflictLens.hasHighlights",
+          "when": "conflictLens.hasBaseChange",
           "group": "conflictLens@1"
         },
         {
           "command": "conflictLens.previewConflict",
-          "when": "conflictLens.hasHighlights",
+          "when": "conflictLens.hasBaseChange",
           "group": "conflictLens@2"
         }
       ]
