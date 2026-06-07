@@ -1696,12 +1696,21 @@ async function showBaseChangesCommand(line?: number, targetUri?: string): Promis
 
   // When invoked from a hover, the hovered hunk's first line (0-based)
   // is passed so the diff editor opens scrolled to that spot. Direct
-  // invocations (command palette, right-click menu) omit the arg and
-  // land at the top of the file as before.
+  // invocations omit the arg: for the right-click menu the caret sits
+  // where the user clicked, so fall back to that cursor line to open at
+  // the spot they were looking at rather than the top of the file. Guard
+  // on the active editor showing this same file so a stale split-view
+  // editor cannot supply a line for the wrong document.
+  let targetLine =
+    typeof line === 'number' && Number.isFinite(line) && line >= 0 ? line : undefined;
+  if (targetLine === undefined) {
+    const active = vscode.window.activeTextEditor;
+    if (active && active.document.uri.toString() === doc.uri.toString()) {
+      targetLine = active.selection.active.line;
+    }
+  }
   const selection =
-    typeof line === 'number' && Number.isFinite(line) && line >= 0
-      ? new vscode.Range(line, 0, line, 0)
-      : undefined;
+    targetLine !== undefined ? new vscode.Range(targetLine, 0, targetLine, 0) : undefined;
 
   try {
     await vscode.commands.executeCommand(
