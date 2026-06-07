@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-06-07
+
+### Fixed
+
+- Files under the repository root could be treated as outside it — and therefore left unhighlighted — when the resolved root and file paths differed (Windows extended-length `\\?\` paths, or a root reached through a symlink). Both sides are now canonicalized the same way.
+
+### Changed
+
+- README: added Marketplace install instructions and corrected the large-file limit note.
+
 ## [0.0.1] - 2026-06-02
 
 Initial pre-release.
