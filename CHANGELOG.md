@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The Explorer "≠" badge no longer disappears when the workspace is opened through a symbolic link. The badge now resolves files the same way the in-editor highlight does (via realpath), so the two stay in agreement. Accented file names (e.g. `café.ts`) are also matched regardless of Unicode normalization form.
+- Highlights, the Explorer "≠" badge, and the Show Base Changes / Preview Conflict commands no longer break when the workspace is opened through a symbolic link. All of them now resolve files through realpath, so the file's real location inside the repository is recognized regardless of the symlinked path. Accented file names (e.g. `café.ts`) are also matched in the badge regardless of Unicode normalization form.
 
 ## [0.0.5] - 2026-06-07
 
