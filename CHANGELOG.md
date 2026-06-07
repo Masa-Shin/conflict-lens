@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-07
+
+First stable release.
+
 ### Added
 
 - Japanese localization. When VS Code's display language is set to Japanese, the command palette entries, settings descriptions, status bar, notifications, hover links, and all other messages are shown in Japanese. Other languages continue to fall back to English.

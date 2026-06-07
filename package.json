@@ -2,7 +2,7 @@
   "name": "conflict-lens",
   "displayName": "%conflictLens.displayName%",
   "description": "%conflictLens.description%",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "publisher": "Masa-Shin",
   "license": "MIT",
   "repository": {
@@ -31,7 +31,6 @@
     "pull request",
     "code review"
   ],
-  "preview": true,
   "icon": "media/icon.png",
   "galleryBanner": {
     "color": "#FFF8E1",
