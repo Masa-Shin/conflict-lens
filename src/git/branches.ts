@@ -25,8 +25,8 @@ export interface ParsedRemoteBranch {
 const REMOTE_NAME_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 /**
- * Allow-listed character set for the user-supplied `conflictLens.baseBranch`
- * setting (spec §3.1.2 §5.5 S5). Stricter than git's own ref name rules:
+ * Allow-listed character set for the user-selected base branch
+ * (spec §3.1.2 §5.5 S5). Stricter than git's own ref name rules:
  * forbids any character that could trip option parsing (`-`, `@{`, etc.) or
  * traversal sequences (`..`).
  */

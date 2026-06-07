@@ -29,7 +29,10 @@ export type BaseBranchResolution =
 export interface ResolveBaseBranchParams {
   readonly runner: GitRunner;
   readonly repoRootPath: string;
-  /** Current value from `conflictLens.baseBranch`. `undefined` means unset. */
+  /**
+   * The base branch the user picked via "Select Base Branch", stored in
+   * workspace state. `undefined` means none has been chosen yet.
+   */
   readonly configured: string | undefined;
   /**
    * Remote name used as the prefix for auto-detection candidates
@@ -44,7 +47,7 @@ export interface ResolveBaseBranchParams {
 /**
  * Decide the effective base branch for a repository:
  *
- *   1. The user-configured `conflictLens.baseBranch` value, if it validates strictly.
+ *   1. The base branch the user selected (stored in workspace state), if it validates strictly.
  *   2. `git symbolic-ref refs/remotes/<remoteName>/HEAD` if it points to a
  *      remote-tracking ref we have locally.
  *   3. `<remoteName>/main` if present in the local listing.
@@ -58,7 +61,7 @@ export interface ResolveBaseBranchParams {
  * `configured-invalid` so the caller can choose between a warning + Select
  * Base Branch prompt and falling through to detection (this function does
  * NOT auto-fall-through, to avoid silently using a different branch than
- * the one the user committed to the repo).
+ * the one the user explicitly selected).
  */
 export async function resolveBaseBranch(
   params: ResolveBaseBranchParams,

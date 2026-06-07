@@ -54,7 +54,12 @@ const DECORATION_REFRESH_DEBOUNCE_MS = 50;
  */
 const DOCUMENT_REFRESH_DEBOUNCE_MS = 200;
 const CONFIG_NAMESPACE = 'conflictLens';
-const BASE_BRANCH_SETTING = 'baseBranch';
+/**
+ * Workspace-state key prefix for the selected base branch. The repo root
+ * path is appended so a multi-root workspace keeps an independent choice
+ * per repository. Stored via `context.workspaceState`, not in settings.
+ */
+const BASE_BRANCH_STATE_KEY = 'conflictLens.baseBranch';
 const REMOTE_NAME_SETTING = 'remoteName';
 const ENABLED_SETTING = 'enabled';
 const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
@@ -84,6 +89,12 @@ interface RuntimeState {
   weakDecorations: WeakDecorationCoordinator;
   fileDecorations: FileDecorationCoordinator;
   conflictPreviews: ConflictPreviewContentProvider;
+  /**
+   * Per-workspace storage for the selected base branch. Local to each
+   * developer and never written to `.vscode/settings.json`, so one
+   * person's choice never leaks into the repository or onto teammates.
+   */
+  workspaceState: vscode.Memento;
 }
 
 interface LiveContext {
@@ -192,6 +203,7 @@ export function activate(context: vscode.ExtensionContext): void {
     weakDecorations,
     fileDecorations,
     conflictPreviews,
+    workspaceState: context.workspaceState,
   };
   oneShotNotificationsShown = new Set();
   setState({ kind: 'initializing' });
@@ -318,9 +330,7 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (event) => {
-      const baseChanged =
-        event.affectsConfiguration(`${CONFIG_NAMESPACE}.${BASE_BRANCH_SETTING}`) ||
-        event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_NAME_SETTING}`);
+      const baseChanged = event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_NAME_SETTING}`);
       const enabledChanged = event.affectsConfiguration(`${CONFIG_NAMESPACE}.${ENABLED_SETTING}`);
       const visualsChanged = event.affectsConfiguration(
         `${CONFIG_NAMESPACE}.${SHOW_OVERVIEW_RULER_SETTING}`,
@@ -428,7 +438,7 @@ async function refreshBaseBranch(): Promise<void> {
   if (currentState.kind !== 'live') return;
   const { environment, repository } = currentState.context;
   const log = runtime?.logChannel;
-  const configured = readConfiguredBaseBranch(repository.handle.rootUri);
+  const configured = readStoredBaseBranch(repository.rootPath);
   const remoteName = readConfiguredRemoteName(repository.handle.rootUri);
 
   let resolution: BaseBranchResolution;
@@ -520,9 +530,12 @@ async function refreshBaseBranch(): Promise<void> {
   );
 }
 
-function readConfiguredBaseBranch(scope: vscode.Uri | undefined): string | undefined {
-  const cfg = vscode.workspace.getConfiguration(CONFIG_NAMESPACE, scope);
-  const value = cfg.get<string>(BASE_BRANCH_SETTING);
+function baseBranchStateKey(repoRootPath: string): string {
+  return `${BASE_BRANCH_STATE_KEY}:${repoRootPath}`;
+}
+
+function readStoredBaseBranch(repoRootPath: string): string | undefined {
+  const value = runtime?.workspaceState.get<string>(baseBranchStateKey(repoRootPath));
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
@@ -1833,15 +1846,14 @@ async function selectBaseBranchCommand(): Promise<void> {
   if (!picked) return;
 
   try {
-    await vscode.workspace
-      .getConfiguration(CONFIG_NAMESPACE, repository.handle.rootUri)
-      .update(BASE_BRANCH_SETTING, picked.label, vscode.ConfigurationTarget.Workspace);
+    await runtime?.workspaceState.update(baseBranchStateKey(repository.rootPath), picked.label);
   } catch (err) {
     runtime?.logChannel.warn(`Saving baseBranch failed: ${stringifyError(err)}`);
     void vscode.window.showWarningMessage(t('{0}: failed to save selection.', EXTENSION_NAME));
     return;
   }
-  // Re-evaluation is triggered by onDidChangeConfiguration.
+  // Workspace state has no change event, so re-resolve explicitly.
+  await refreshBaseBranch();
 }
 
 function debounce<T extends (...args: never[]) => void>(
