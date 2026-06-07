@@ -70,8 +70,6 @@ code --install-extension Masa-Shin.conflict-lens
 
 [Marketplace のページ](https://marketplace.visualstudio.com/items?itemName=Masa-Shin.conflict-lens)から直接開くこともできます。
 
-> 現在はプレリリース版です。最新ビルドは拡張機能ビューの「Install Pre-Release Version」から入れてください。
-
 ## 使い方
 
 1. git リポジトリを VS Code で開く
