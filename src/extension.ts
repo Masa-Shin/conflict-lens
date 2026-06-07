@@ -710,9 +710,9 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
   const activeEditor = vscode.window.activeTextEditor;
   const editorResults = await Promise.all(
     editors.map((editor) =>
-      applyToEditor(editor, inputs).then((outcome) => ({
+      applyToEditor(editor, inputs).then((result) => ({
         editor,
-        outcome,
+        ...result,
       })),
     ),
   );
@@ -723,7 +723,7 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
   // refresh path and must not be overwritten here.
   const activeResult = editorResults.find((r) => r.editor === activeEditor);
   if (activeResult !== undefined) {
-    applyActiveOutcome(activeResult.outcome);
+    applyActiveOutcome(activeResult.outcome, activeResult.baseChanged);
   }
 }
 
@@ -739,7 +739,7 @@ async function refreshDecorationsNow(): Promise<void> {
       weakDecorations.clear(editor);
     }
     fileDecorations.clear();
-    applyActiveOutcome('clean');
+    applyActiveOutcome('clean', false);
   };
 
   if (!isEnabled() || currentState.kind !== 'live') {
@@ -796,9 +796,9 @@ async function refreshDecorationsNow(): Promise<void> {
   const activeEditor = vscode.window.activeTextEditor;
   const editorResults = await Promise.all(
     editors.map((editor) =>
-      applyToEditor(editor, inputs).then((outcome) => ({
+      applyToEditor(editor, inputs).then((result) => ({
         editor,
-        outcome,
+        ...result,
       })),
     ),
   );
@@ -806,31 +806,38 @@ async function refreshDecorationsNow(): Promise<void> {
   if (isSuperseded()) return;
 
   // The right-click menu and the suppression indicator are gated on the
-  // *active* editor's outcome, so resolve that editor's result out of the
+  // *active* editor's result, so resolve that editor's entry out of the
   // batch.
-  const activeOutcome = editorResults.find((r) => r.editor === activeEditor)?.outcome ?? 'clean';
-  applyActiveOutcome(activeOutcome);
+  const activeResult = editorResults.find((r) => r.editor === activeEditor);
+  applyActiveOutcome(activeResult?.outcome ?? 'clean', activeResult?.baseChanged ?? false);
 }
 
 /**
  * Reflect the active editor's highlight outcome into the two UI surfaces
  * that depend on it:
- *  - `conflictLens.hasHighlights` context key — gates the editor right-click
- *    menu ("Preview Conflict" / "Show Base Branch Changes"), which only makes
- *    sense when highlights are actually shown. Mirrored into a context key
- *    because `when` clauses can only read context keys, not extension state.
+ *  - `conflictLens.hasBaseChange` context key — gates the editor right-click
+ *    menu ("Preview Conflict" / "Show Base Branch Changes"). These make sense
+ *    whenever the base touched the file, even if no highlights are visible
+ *    (the local buffer deleted every changed region, or they were withheld as
+ *    too large). Mirrored into a context key because `when` clauses can only
+ *    read context keys, not extension state.
  *  - the main status-bar item — its appearance encodes the active file's
  *    state (highlighted / changed-but-too-large / unchanged); see
  *    `renderStatusBar`. The outcome is stashed so a later state change can
  *    re-render with the same per-file context.
  */
-let lastHasHighlights: boolean | undefined;
+interface EditorApplyResult {
+  readonly outcome: HighlightOutcome;
+  /** Whether the base branch has changed this file (drives the menu gate). */
+  readonly baseChanged: boolean;
+}
+
+let lastHasBaseChange: boolean | undefined;
 let lastActiveOutcome: HighlightOutcome = 'clean';
-function applyActiveOutcome(outcome: HighlightOutcome): void {
-  const hasHighlights = outcome === 'highlighted';
-  if (hasHighlights !== lastHasHighlights) {
-    lastHasHighlights = hasHighlights;
-    void vscode.commands.executeCommand('setContext', 'conflictLens.hasHighlights', hasHighlights);
+function applyActiveOutcome(outcome: HighlightOutcome, baseChanged: boolean): void {
+  if (baseChanged !== lastHasBaseChange) {
+    lastHasBaseChange = baseChanged;
+    void vscode.commands.executeCommand('setContext', 'conflictLens.hasBaseChange', baseChanged);
   }
   if (outcome !== lastActiveOutcome) {
     lastActiveOutcome = outcome;
@@ -840,26 +847,26 @@ function applyActiveOutcome(outcome: HighlightOutcome): void {
 
 /**
  * Validate the editor's document path against the repo and dispatch the
- * weak coordinator. Returns the editor's highlight outcome, used to drive
- * the `conflictLens.hasHighlights` context key (right-click menu) and the
- * suppression status-bar indicator. Editors that are out of scope count as
- * `clean` — no highlights, nothing suppressed.
+ * weak coordinator. Returns the editor's highlight outcome plus whether the
+ * base changed the file, used to drive the `conflictLens.hasBaseChange`
+ * context key (right-click menu) and the suppression status-bar indicator.
+ * Editors that are out of scope count as `clean` with no base change.
  */
 async function applyToEditor(
   editor: vscode.TextEditor,
   inputs: WeakHighlightInputs,
-): Promise<HighlightOutcome> {
-  if (!runtime) return 'clean';
+): Promise<EditorApplyResult> {
+  if (!runtime) return { outcome: 'clean', baseChanged: false };
   const { weakDecorations, fileDecorations } = runtime;
   const doc = editor.document;
   if (doc.uri.scheme !== 'file' || doc.isUntitled) {
     weakDecorations.clear(editor);
-    return 'clean';
+    return { outcome: 'clean', baseChanged: false };
   }
   const normalized = await resolveRepoRelativePath(doc, inputs.repoRootPath);
   if (normalized === undefined) {
     weakDecorations.clear(editor);
-    return 'clean';
+    return { outcome: 'clean', baseChanged: false };
   }
 
   // If the changed-files set is already populated for the current
@@ -877,7 +884,7 @@ async function applyToEditor(
   );
   if (baseChange === false) {
     weakDecorations.clear(editor);
-    return 'clean';
+    return { outcome: 'clean', baseChanged: false };
   }
 
   const outcome = await weakDecorations.update({
@@ -895,9 +902,15 @@ async function applyToEditor(
   // file. Downgrade that to `clean`; the next full refresh populates the
   // set and settles a genuinely-changed file back to `suppressed`.
   if (outcome === 'suppressed' && baseChange === undefined) {
-    return 'clean';
+    return { outcome: 'clean', baseChanged: false };
   }
-  return outcome;
+  // The right-click menu (Show Base Changes / Preview Conflict) should be
+  // available whenever the base touched this file — even if no highlights
+  // are visible right now because the local buffer deleted every changed
+  // region, or they were withheld as too large. That is exactly the set of
+  // files that carry the Explorer "≠" badge.
+  const baseChanged = baseChange === true || outcome === 'highlighted' || outcome === 'suppressed';
+  return { outcome, baseChanged };
 }
 
 /**
