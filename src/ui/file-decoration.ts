@@ -113,8 +113,13 @@ export class FileDecorationCoordinator implements vscode.FileDecorationProvider,
     if (!this.realpathInflight.has(uri.fsPath)) {
       this.realpathInflight.add(uri.fsPath);
       void repoRelativePathViaRealpath(uri.fsPath, root).then((resolved) => {
+        // Drop the inflight marker first so a later query can re-resolve.
         this.realpathInflight.delete(uri.fsPath);
-        if (this.disposed) return;
+        // Discard if the repo root moved while we resolved: `resolved` is
+        // relative to the old root, and `refresh` already cleared the cache
+        // for the new one. Writing it back would resurrect a stale mapping
+        // that could mis-match the new changed set.
+        if (this.disposed || this.repoRootPath !== root) return;
         const relKey = resolved === undefined ? null : normalizeKey(resolved);
         this.realpathRelCache.set(uri.fsPath, relKey);
         // Repaint only when the result would actually add a badge; the

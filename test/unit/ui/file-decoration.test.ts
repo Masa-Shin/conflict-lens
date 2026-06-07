@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../src/git/changed-files', () => ({
   listChangedFilesOnBase: vi.fn(),
@@ -169,5 +172,64 @@ describe('FileDecorationCoordinator', () => {
 
     coord.clear();
     expect(fired).toHaveLength(3);
+  });
+
+  // The fast path only fires when uri.fsPath sits directly under the
+  // realpath'd root (the /tmp/repo cases above). These exercise the parts
+  // layered on top of it: NFC key matching and the symlink realpath fallback.
+  describe('symlink + Unicode handling', () => {
+    let workdir: string;
+
+    beforeEach(() => {
+      workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'conflict-lens-deco-'));
+    });
+
+    afterEach(() => {
+      try {
+        fs.rmSync(workdir, { recursive: true, force: true });
+      } catch {
+        // best-effort cleanup
+      }
+    });
+
+    it('matches a changed file regardless of Unicode normalization form', async () => {
+      const nfc = 'café.ts'; // precomposed é
+      const nfd = 'café.ts'; // decomposed e + combining acute
+      // Guard: if a formatter ever normalizes these literals to the same
+      // form, this test would pass trivially — fail loudly instead.
+      expect(nfc).not.toBe(nfd);
+      // The changed set arrives in one form; the lookup URI in the other.
+      listChanged.mockResolvedValueOnce([nfd]);
+      await coord.refresh(makeInputs());
+
+      const deco = coord.provideFileDecoration(Uri.file(`/tmp/repo/${nfc}`));
+      expect(deco?.badge).toBe('≠');
+    });
+
+    it('resolves the badge through realpath when the workspace path is a symlink', async () => {
+      const realRepoRoot = fs.realpathSync(fs.mkdtempSync(path.join(workdir, 'repo-')));
+      fs.writeFileSync(path.join(realRepoRoot, 'a.txt'), 'a');
+      const linkedRoot = path.join(workdir, 'linked-root');
+      fs.symlinkSync(realRepoRoot, linkedRoot);
+
+      listChanged.mockResolvedValueOnce(['a.txt']);
+      await coord.refresh({ ...makeInputs(), repoRootPath: realRepoRoot });
+
+      const uriViaLink = Uri.file(path.join(linkedRoot, 'a.txt'));
+      // First paint: the raw symlink path is "outside" the realpath'd root,
+      // so the fast path misses and the fallback resolves off the paint path.
+      expect(coord.provideFileDecoration(uriViaLink)).toBeUndefined();
+
+      // The fallback fires a repaint once the realpath mapping is cached.
+      await new Promise<void>((resolve) => {
+        const sub = coord.onDidChangeFileDecorations(() => {
+          sub.dispose();
+          resolve();
+        });
+      });
+
+      // Second paint: served from the realpath cache → badge appears.
+      expect(coord.provideFileDecoration(uriViaLink)?.badge).toBe('≠');
+    });
   });
 });
