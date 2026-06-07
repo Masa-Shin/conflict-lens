@@ -348,6 +348,11 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       if (event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_CHECK_INTERVAL_SETTING}`)) {
         startOrRestartRemoteCheckTimer();
       }
+      // git.autofetch flips whether we poll at all: turning it off starts
+      // the timer, turning it on stops it.
+      if (event.affectsConfiguration('git.autofetch')) {
+        startOrRestartRemoteCheckTimer();
+      }
     }),
   );
 
@@ -539,6 +544,18 @@ function readStoredBaseBranch(repoRootPath: string): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
+}
+
+/**
+ * Whether VS Code's built-in Git auto-fetch is on for this scope. The
+ * `git.autofetch` setting is `true`, `false`, or `"all"`. When it is on,
+ * VS Code keeps the base branch's remote-tracking ref fresh on its own and
+ * our state-change handler re-resolves the merge-base when it lands, so
+ * Conflict Lens does not need to prompt the user to fetch.
+ */
+function isVscodeGitAutofetchEnabled(scope: vscode.Uri | undefined): boolean {
+  const value = vscode.workspace.getConfiguration('git', scope).get<boolean | string>('autofetch');
+  return value === true || value === 'all';
 }
 
 function readConfiguredRemoteName(scope: vscode.Uri | undefined): string {
@@ -988,6 +1005,16 @@ function readRemoteCheckIntervalMinutes(): number {
  */
 function maybePerformRemoteCheck(): void {
   if (readRemoteCheckIntervalMinutes() <= 0) return;
+  // When VS Code's own auto-fetch is on it keeps the base tracking ref
+  // fresh, so the ls-remote poll (whose only purpose is to prompt for a
+  // fetch) is redundant. Read fresh so toggling the setting takes effect
+  // on the next focus tick without any extra wiring.
+  if (
+    currentState.kind === 'live' &&
+    isVscodeGitAutofetchEnabled(currentState.context.repository.handle.rootUri)
+  ) {
+    return;
+  }
   const now = Date.now();
   if (now - lastRemoteCheckAt < REMOTE_CHECK_THROTTLE_MS) return;
   lastRemoteCheckAt = now;
@@ -1004,6 +1031,10 @@ function startOrRestartRemoteCheckTimer(): void {
   stopRemoteCheckTimer();
   if (currentState.kind !== 'live') return;
   if (!currentState.context.baseBranch) return;
+  // Skip the periodic poll entirely when VS Code auto-fetch is on; its
+  // fetches keep the base ref fresh and the state-change handler refreshes
+  // the highlights. Re-evaluated whenever git.autofetch changes.
+  if (isVscodeGitAutofetchEnabled(currentState.context.repository.handle.rootUri)) return;
   const intervalMin = readRemoteCheckIntervalMinutes();
   if (!Number.isFinite(intervalMin) || intervalMin <= 0) return;
   const intervalMs = intervalMin * 60_000;
@@ -1137,9 +1168,9 @@ async function tryFetchBaseOnly(ctx: LiveContext, baseBranch: string): Promise<b
   try {
     await handle.fetch({ remote: split.remote, ref: split.branch });
     runtime?.logChannel.info(`vscode.git fetched ${split.remote}/${split.branch}.`);
-    void vscode.window.showInformationMessage(
-      t('{0}: fetched updates for {1}.', EXTENSION_NAME, baseBranch),
-    );
+    // No success toast: the user clicked Fetch and the highlights refresh on
+    // their own, which is feedback enough. A "fetched" info toast would just
+    // be one more notification to dismiss. Failures still surface below.
     return true;
   } catch (err) {
     runtime?.logChannel.warn(
