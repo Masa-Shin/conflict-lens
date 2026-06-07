@@ -220,10 +220,18 @@ export async function isFileWithinRepository(
     return false;
   }
   let canonical: string;
+  let canonicalRoot: string;
   try {
+    // Canonicalize both operands through the SAME realpath, or they can
+    // diverge on Windows: the sync fs.realpathSync that produced repoRootPath
+    // is a JS implementation that leaves 8.3 short names (RUNNER~1) intact,
+    // while the async fs.promises.realpath (libuv) expands them to their long
+    // form. The mismatch makes path.relative report every descendant as
+    // "outside". Re-resolving the root here keeps the comparison honest.
     canonical = await fs.promises.realpath(filePath);
+    canonicalRoot = await fs.promises.realpath(repoRootPath);
   } catch {
     return false;
   }
-  return isSamePathOrUnder(canonical, repoRootPath);
+  return isSamePathOrUnder(canonical, canonicalRoot);
 }
