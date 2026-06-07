@@ -1,0 +1,2 @@
+# 空の Issue（テンプレートなし）を禁止し、上の2種類に誘導する。
+blank_issues_enabled: false
