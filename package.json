@@ -176,6 +176,8 @@
     "build:prod": "npm run typecheck && node esbuild.config.mjs --production",
     "watch": "node esbuild.config.mjs --watch",
     "typecheck": "tsc --noEmit -p ./",
+    "lint": "oxlint && oxfmt --check",
+    "fix": "oxlint --fix && oxfmt",
     "test": "vitest run",
     "test:watch": "vitest",
     "vscode:prepublish": "npm run build:prod"
