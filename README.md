@@ -166,7 +166,7 @@ Setting changes should apply immediately, but if something still seems off, try 
 
 - In a multi-root workspace, only the first folder is watched
 - Files inside submodules and symbolic links are not covered
-- Files where the base changed more than 200 locations are not decorated (the threshold is configurable)
+- Very large files (over 15,000 lines or about 1.5M characters) are not highlighted
 
 ## Development
 

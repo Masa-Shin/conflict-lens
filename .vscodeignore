@@ -13,6 +13,8 @@ out/**
 **/.eslintrc*
 **/vitest.config.*
 **/esbuild.config.*
+.oxlintrc.json
+.oxfmtrc.json
 specification.md
 TASKS.md
 FUTURE.md

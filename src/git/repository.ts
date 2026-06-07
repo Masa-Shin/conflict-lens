@@ -162,14 +162,29 @@ async function classifyRepository(
 }
 
 /**
+ * Strip the Windows extended-length namespace prefix (`\\?\C:\…` or
+ * `\\?\UNC\server\share`). `fs.realpathSync` (a JS implementation) and
+ * `fs.promises.realpath` (libuv) disagree on whether they emit this prefix,
+ * so two paths pointing at the same location can differ by it alone. Left
+ * unstripped, `path.relative` treats them as different roots and reports the
+ * descendant as "outside". No-op on POSIX.
+ */
+function stripWindowsNamespacePrefix(p: string): string {
+  if (path.sep !== '\\') return p;
+  return p.replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\/, '');
+}
+
+/**
  * True iff `candidatePath` is at or below `containerPath`. Both inputs are
  * expected to be canonical absolute paths (realpath-resolved). Uses
  * `path.relative` so prefix attacks like `/repo-malicious` cannot fool the
  * containment check.
  */
 export function isSamePathOrUnder(candidatePath: string, containerPath: string): boolean {
-  if (candidatePath === containerPath) return true;
-  const rel = path.relative(containerPath, candidatePath);
+  const candidate = stripWindowsNamespacePrefix(candidatePath);
+  const container = stripWindowsNamespacePrefix(containerPath);
+  if (candidate === container) return true;
+  const rel = path.relative(container, candidate);
   if (rel === '') return true;
   if (rel.startsWith('..')) return false;
   if (path.isAbsolute(rel)) return false;

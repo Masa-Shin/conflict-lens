@@ -26,6 +26,15 @@ describe('isSamePathOrUnder', () => {
   it('returns false for the container parent', () => {
     expect(isSamePathOrUnder('/', '/repo')).toBe(false);
   });
+
+  it.skipIf(path.sep !== '\\')(
+    'treats a candidate carrying the Windows extended-length prefix as inside',
+    () => {
+      // realpathSync (JS) and promises.realpath (libuv) disagree on emitting
+      // `\\?\`; without normalization path.relative would report "outside".
+      expect(isSamePathOrUnder('\\\\?\\C:\\repo\\src\\file.ts', 'C:\\repo')).toBe(true);
+    },
+  );
 });
 
 describe('isFileWithinRepository', () => {
