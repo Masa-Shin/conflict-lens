@@ -210,17 +210,53 @@ export async function isFileWithinRepository(
   filePath: string,
   repoRootPath: string,
 ): Promise<boolean> {
+  return (await canonicalizeWithin(filePath, repoRootPath)) !== undefined;
+}
+
+/**
+ * Repo-relative, forward-slashed path for `filePath` after the SAME
+ * realpath canonicalization `isFileWithinRepository` performs, or
+ * `undefined` when the path is a symlink, does not exist, is the repo root
+ * itself, or resolves outside the repo.
+ *
+ * The Explorer hands `provideFileDecoration` URIs in the workspace's
+ * namespace, which differs from the realpath'd repo root when the workspace
+ * is opened through a symlink. Resolving the file the way the highlight path
+ * does keeps the file-tree badge and the in-editor highlight in agreement.
+ */
+export async function repoRelativePathViaRealpath(
+  filePath: string,
+  repoRootPath: string,
+): Promise<string | undefined> {
+  const canon = await canonicalizeWithin(filePath, repoRootPath);
+  if (!canon) return undefined;
+  const rel = path.relative(canon.root, canon.file);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return undefined;
+  return rel.split(path.sep).join('/');
+}
+
+/**
+ * Shared canonicalization behind `isFileWithinRepository` and
+ * `repoRelativePathViaRealpath`. Returns the realpath'd file and root (with
+ * the Windows namespace prefix stripped so they share a comparison basis)
+ * when `filePath` is a non-symlink regular path at or under `repoRootPath`;
+ * `undefined` otherwise.
+ */
+async function canonicalizeWithin(
+  filePath: string,
+  repoRootPath: string,
+): Promise<{ file: string; root: string } | undefined> {
   let stat: fs.Stats;
   try {
     stat = await fs.promises.lstat(filePath);
   } catch {
-    return false;
+    return undefined;
   }
   if (stat.isSymbolicLink()) {
-    return false;
+    return undefined;
   }
-  let canonical: string;
-  let canonicalRoot: string;
+  let file: string;
+  let root: string;
   try {
     // Canonicalize both operands through the SAME realpath, or they can
     // diverge on Windows: the sync fs.realpathSync that produced repoRootPath
@@ -228,10 +264,13 @@ export async function isFileWithinRepository(
     // while the async fs.promises.realpath (libuv) expands them to their long
     // form. The mismatch makes path.relative report every descendant as
     // "outside". Re-resolving the root here keeps the comparison honest.
-    canonical = await fs.promises.realpath(filePath);
-    canonicalRoot = await fs.promises.realpath(repoRootPath);
+    file = stripWindowsNamespacePrefix(await fs.promises.realpath(filePath));
+    root = stripWindowsNamespacePrefix(await fs.promises.realpath(repoRootPath));
   } catch {
-    return false;
+    return undefined;
   }
-  return isSamePathOrUnder(canonical, canonicalRoot);
+  if (!isSamePathOrUnder(file, root)) {
+    return undefined;
+  }
+  return { file, root };
 }
