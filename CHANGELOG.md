@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Explorer "≠" badge no longer disappears when the workspace is opened through a symbolic link. The badge now resolves files the same way the in-editor highlight does (via realpath), so the two stay in agreement. Accented file names (e.g. `café.ts`) are also matched regardless of Unicode normalization form.
 
+## [0.0.5] - 2026-06-07
+
+### Changed
+
+- The base branch you choose with **Select Base Branch** is now stored per workspace (local to you) instead of in a `conflictLens.baseBranch` setting, so your choice never leaks into the repository or onto teammates. The `conflictLens.baseBranch` setting has been removed; pick a base branch from the status bar or the **Select Base Branch** command.
+- When VS Code's built-in Git auto-fetch (`git.autofetch`) is enabled, Conflict Lens no longer polls the remote or prompts you to fetch. It relies on auto-fetch and refreshes the highlights on its own when the base branch updates.
+- Removed the notification shown after clicking **Fetch**; the highlights refresh on their own, which is feedback enough.
+
 ## [0.0.4] - 2026-06-07
 
 Maintenance release; no user-facing changes.
