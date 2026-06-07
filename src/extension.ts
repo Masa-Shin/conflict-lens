@@ -1124,9 +1124,9 @@ async function tryFetchBaseOnly(ctx: LiveContext, baseBranch: string): Promise<b
   try {
     await handle.fetch({ remote: split.remote, ref: split.branch });
     runtime?.logChannel.info(`vscode.git fetched ${split.remote}/${split.branch}.`);
-    void vscode.window.showInformationMessage(
-      t('{0}: fetched updates for {1}.', EXTENSION_NAME, baseBranch),
-    );
+    // No success toast: the user clicked Fetch and the highlights refresh on
+    // their own, which is feedback enough. A "fetched" info toast would just
+    // be one more notification to dismiss. Failures still surface below.
     return true;
   } catch (err) {
     runtime?.logChannel.warn(
