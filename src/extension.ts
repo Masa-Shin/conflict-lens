@@ -22,7 +22,7 @@ import { runMergeFile } from './git/merge-file';
 import { checkRemoteForUpdates, splitRemoteBranch } from './git/remote-check';
 import {
   detectTargetRepository,
-  isFileWithinRepository,
+  repoRelativePathViaRealpath,
   type TargetRepository,
   type TargetRepositoryResult,
 } from './git/repository';
@@ -915,22 +915,13 @@ async function resolveRepoRelativePath(
   const cached = repoRelativePathCache.get(key);
   if (cached !== undefined) return cached ?? undefined;
 
-  const within = await isFileWithinRepository(doc.uri.fsPath, repoRootPath);
-  if (!within) {
-    repoRelativePathCache.set(key, null);
-    return undefined;
-  }
-  // path.relative may yield "" for the repo root itself or platform-specific
-  // separators on Windows. Git expects forward slashes for path arguments;
-  // we normalize so that the cache key and the git command line agree on
-  // the same string.
-  const relative = path.relative(repoRootPath, doc.uri.fsPath);
-  const normalized = relative.split(path.sep).join('/');
-  if (normalized === '' || normalized.startsWith('..')) {
-    repoRelativePathCache.set(key, null);
-    return undefined;
-  }
-  repoRelativePathCache.set(key, normalized);
+  // Resolve through realpath so the relative path is computed in the repo's
+  // real namespace, matching the file-tree badge and the git changed-set
+  // keys. Computing it from the raw fsPath would yield a `..`-prefixed
+  // (i.e. "outside") path whenever the workspace is opened via a symlink,
+  // dropping the highlight even though the file is genuinely inside.
+  const normalized = await repoRelativePathViaRealpath(doc.uri.fsPath, repoRootPath);
+  repoRelativePathCache.set(key, normalized ?? null);
   return normalized;
 }
 
@@ -1623,16 +1614,13 @@ async function resolveActiveTarget(targetUri?: string): Promise<
   }
   if (doc.uri.scheme !== 'file') return undefined;
 
-  const within = await isFileWithinRepository(doc.uri.fsPath, ctx.repository.rootPath);
-  if (!within) {
+  const normalized = await repoRelativePathViaRealpath(doc.uri.fsPath, ctx.repository.rootPath);
+  if (normalized === undefined) {
     void vscode.window.showInformationMessage(
       t('{0}: file is not inside the repository.', EXTENSION_NAME),
     );
     return undefined;
   }
-  const relative = path.relative(ctx.repository.rootPath, doc.uri.fsPath);
-  const normalized = relative.split(path.sep).join('/');
-  if (normalized === '' || normalized.startsWith('..')) return undefined;
 
   // Both commands render the file as text (a diff editor / a trial-merge
   // document). A binary file would come through as garbled UTF-8, so bail

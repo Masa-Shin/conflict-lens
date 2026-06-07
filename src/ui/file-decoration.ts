@@ -1,11 +1,22 @@
 import * as vscode from 'vscode';
 
 import { listChangedFilesOnBase } from '../git/changed-files';
+import { repoRelativePathViaRealpath } from '../git/repository';
 import type { GitRunner } from '../git/runner';
 import { t } from '../l10n';
 import { relativeIfWithin } from './file-decoration-helpers';
 
 export { relativeIfWithin };
+
+/**
+ * Normalize a repo-relative path to NFC before comparing against the
+ * changed set. macOS can hand back decomposed (NFD) names from the
+ * filesystem while git stores precomposed (NFC) bytes; without this an
+ * accented name like `café.ts` would miss the lookup. No-op for ASCII.
+ */
+function normalizeKey(relativePath: string): string {
+  return relativePath.normalize('NFC');
+}
 
 export interface FileDecorationSettings {
   readonly showBadges: boolean;
@@ -48,6 +59,15 @@ export class FileDecorationCoordinator implements vscode.FileDecorationProvider,
   private cachedDecoration: vscode.FileDecoration | undefined;
   /** Repo root for URI→path conversion. Undefined when no inputs yet. */
   private repoRootPath: string | undefined;
+  /**
+   * Cache of realpath'd repo-relative paths per Explorer URI (`null` =
+   * outside / a symlink / nonexistent). Populated lazily by the
+   * symlink-aware fallback so the paint path does its realpath I/O at most
+   * once per URI. Cleared when the repo root changes.
+   */
+  private readonly realpathRelCache = new Map<string, string | null>();
+  /** URIs with an in-flight realpath resolve, to dedupe concurrent paints. */
+  private readonly realpathInflight = new Set<string>();
   private lastRefreshKey: string | undefined;
   private disposed = false;
 
@@ -63,9 +83,47 @@ export class FileDecorationCoordinator implements vscode.FileDecorationProvider,
     if (this.disposed) return undefined;
     if (this.changed.size === 0) return undefined;
     if (uri.scheme !== 'file' || !this.repoRootPath) return undefined;
-    const rel = relativeIfWithin(uri.fsPath, this.repoRootPath);
-    if (rel === undefined) return undefined;
-    if (this.changed.has(rel)) return this.buildChangedDecoration();
+    const root = this.repoRootPath;
+    // Fast path: when the workspace is opened at its real location, the raw
+    // fsPath is already in the repo's namespace and this answer is final.
+    const rel = relativeIfWithin(uri.fsPath, root);
+    if (rel !== undefined) {
+      return this.changed.has(normalizeKey(rel)) ? this.buildChangedDecoration() : undefined;
+    }
+    // The raw fsPath looks outside the realpath'd root — either genuinely
+    // outside, or the workspace was opened through a symlink so the two
+    // namespaces differ. The in-editor highlight path realpaths the file
+    // (isFileWithinRepository), so mirror it here to stay in agreement.
+    return this.decorationViaRealpath(uri, root);
+  }
+
+  /**
+   * Symlink-aware fallback for `provideFileDecoration`. Stays synchronous so
+   * the explorer paint never blocks on I/O: a resolved mapping answers from
+   * cache, an unresolved one schedules a one-off realpath and repaints just
+   * this node once the canonical repo-relative path is known.
+   */
+  private decorationViaRealpath(uri: vscode.Uri, root: string): vscode.FileDecoration | undefined {
+    const cached = this.realpathRelCache.get(uri.fsPath);
+    if (cached !== undefined) {
+      return cached !== null && this.changed.has(cached)
+        ? this.buildChangedDecoration()
+        : undefined;
+    }
+    if (!this.realpathInflight.has(uri.fsPath)) {
+      this.realpathInflight.add(uri.fsPath);
+      void repoRelativePathViaRealpath(uri.fsPath, root).then((resolved) => {
+        this.realpathInflight.delete(uri.fsPath);
+        if (this.disposed) return;
+        const relKey = resolved === undefined ? null : normalizeKey(resolved);
+        this.realpathRelCache.set(uri.fsPath, relKey);
+        // Repaint only when the result would actually add a badge; the
+        // already-painted "no badge" stays correct otherwise.
+        if (relKey !== null && this.changed.has(relKey)) {
+          this.didChangeEmitter.fire([uri]);
+        }
+      });
+    }
     return undefined;
   }
 
@@ -89,7 +147,7 @@ export class FileDecorationCoordinator implements vscode.FileDecorationProvider,
     if (this.lastRefreshKey !== `${baseBranch}|${mergeBaseSha}|${baseTipSha}`) {
       return undefined;
     }
-    return this.changed.has(relativeFilePath);
+    return this.changed.has(normalizeKey(relativeFilePath));
   }
 
   /**
@@ -118,8 +176,12 @@ export class FileDecorationCoordinator implements vscode.FileDecorationProvider,
 
     if (this.disposed || isSuperseded?.()) return;
 
+    if (this.repoRootPath !== inputs.repoRootPath) {
+      // Root moved: previously resolved symlink mappings no longer apply.
+      this.realpathRelCache.clear();
+    }
     this.repoRootPath = inputs.repoRootPath;
-    this.changed = new Set(changedArr);
+    this.changed = new Set(changedArr.map(normalizeKey));
     this.lastRefreshKey = key;
     this.didChangeEmitter.fire(undefined);
   }
