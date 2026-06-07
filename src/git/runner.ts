@@ -203,6 +203,13 @@ function runGit(
       });
     });
 
+    // The child can die between spawn and this write (e.g. an immediate
+    // exec failure). Writing to its stdin then emits EPIPE/ECONNRESET on
+    // the stream itself — not on the child's 'error' event — and without a
+    // listener Node rethrows it as an uncaught exception, crashing the
+    // extension host. The real failure still surfaces via 'error'/'close'.
+    child.stdin?.on('error', () => {});
+
     if (options.stdin !== undefined) {
       child.stdin?.end(options.stdin);
     } else {

@@ -186,6 +186,11 @@ export class GitCatFileBatch {
         ),
       );
     });
+    // If the child dies while we are writing a request line, the EPIPE/
+    // ECONNRESET lands on the stdin stream rather than the child's 'error'
+    // event. Without this listener Node would rethrow it and crash the
+    // extension host; the death itself is handled via 'close' → failAll.
+    child.stdin?.on('error', () => {});
     child.stdout?.on('data', (chunk: Buffer) => this.onData(chunk));
     // Drain stderr to prevent the kernel pipe buffer from filling and
     // blocking the child. The contents are otherwise ignored.
