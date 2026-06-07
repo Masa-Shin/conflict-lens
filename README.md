@@ -6,7 +6,7 @@ English | [日本語](README.ja.md)
 [![CI](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A VS Code extension that highlights code likely to conflict with the base branch.
+A VS Code extension that highlights code where your edits could conflict with the base branch.
 
 It periodically checks the remote base branch and highlights code in the file you have open that has been changed on the base branch.
 
@@ -51,10 +51,8 @@ You can also check the upstream changes from the hover menu on a highlighted lin
 
 ## Requirements
 
-| | |
-|---|---|
-| VS Code | 1.74 or later |
-| Git | 2.30 or later |
+- VS Code 1.74 or later
+- Git 2.30 or later
 
 ## Installation
 

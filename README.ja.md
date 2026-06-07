@@ -6,7 +6,7 @@
 [![CI](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/Masa-Shin/conflict-lens/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-ソースコード上でコンフリクトしそうな箇所をハイライトする VS Code 拡張
+編集するとベースブランチとコンフリクトしうる箇所をハイライトする VS Code 拡張
 
 リモートのベースブランチを定期チェックし、ベースブランチで変更されているコードをハイライトします。
 
@@ -51,10 +51,8 @@
 
 ## 要件
 
-| | |
-|---|---|
-| VS Code | 1.74 以上 |
-| Git | 2.30 以上 |
+- VS Code 1.74 以上
+- Git 2.30 以上
 
 ## インストール
 
