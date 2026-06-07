@@ -152,11 +152,29 @@ let runtime: RuntimeState | undefined;
 let currentState: ExtensionState = { kind: 'initializing' };
 let oneShotNotificationsShown: Set<string> = new Set();
 
+/**
+ * Extension entry point, invoked once by VS Code when an activation event
+ * fires (see `activationEvents` / `main` in package.json). Its job is to
+ * build the long-lived UI surfaces synchronously — so that `runtime` is
+ * populated before any event handler or command can run — and then kick
+ * off the asynchronous git probing in `initialize`.
+ *
+ * Everything created here is registered on `context.subscriptions`, which
+ * VS Code disposes for us on deactivation; we never tear these down by hand.
+ * The synchronous half deliberately performs no git work: it cannot fail in
+ * a way that leaves the extension half-built, and the status bar shows
+ * "(initializing)" the instant the user opens the window.
+ */
 export function activate(context: vscode.ExtensionContext): void {
+  // Log output channel — the single sink for diagnostics, surfaced to the
+  // user via the "Show Output Channel" command. Created first so every later
+  // step can log into it.
   const logChannel = vscode.window.createOutputChannel(EXTENSION_NAME, { log: true });
   context.subscriptions.push(logChannel);
   logChannel.info(t('{0} activated.', EXTENSION_NAME));
 
+  // Primary status-bar item: always visible, shows the current base branch /
+  // git state and acts as the click target for "Select Base Branch".
   const statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     100,
@@ -166,6 +184,10 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
+  // Secondary status-bar item: surfaced only while the active file is changed
+  // on the base but too large to highlight, so "no highlights" reads
+  // differently from "highlights deliberately withheld". Configured here but
+  // left hidden; `applyActiveOutcome` shows/hides it per active editor.
   const suppressedStatusItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     99,
@@ -183,6 +205,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // Hidden until the active editor is actually a suppressed file.
   context.subscriptions.push(suppressedStatusItem);
 
+  // Build the coordinators and content providers that own the actual UI:
+  //  - weakDecorations: the in-editor base-change highlights.
+  //  - fileDecorations: the Explorer badges + the changed-files set.
+  //  - diffContentProvider: feeds base-side blobs into the built-in diff
+  //    editor; reads through whatever `readBlob` the live context exposes.
+  //  - conflictPreviews: backs the read-only "Preview Conflict" document.
   const initialSettings = readWeakDecorationSettings();
   const weakDecorations = new WeakDecorationCoordinator(
     initialSettings,
@@ -195,6 +223,9 @@ export function activate(context: vscode.ExtensionContext): void {
     currentState.kind === 'live' ? currentState.context.readBlob : undefined,
   );
   const conflictPreviews = new ConflictPreviewContentProvider();
+  // Register the providers and hand their disposal to VS Code. The decoration
+  // provider drives Explorer badges; the two content providers serve the
+  // custom `conflict-lens://` and `conflict-lens-preview://` schemes.
   context.subscriptions.push(
     weakDecorations,
     fileDecorations,
@@ -210,6 +241,10 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
   );
 
+  // Publish the assembled UI as module-level `runtime`. Every command and
+  // event handler reads through this, so it must be set before
+  // `registerCommands` / `initialize` wire anything up. `setState` then paints
+  // the initial "(initializing)" status bar.
   runtime = {
     logChannel,
     statusBarItem,
@@ -221,8 +256,15 @@ export function activate(context: vscode.ExtensionContext): void {
   oneShotNotificationsShown = new Set();
   setState({ kind: 'initializing' });
 
+  // Register the user-facing commands. Safe to do now even though git is not
+  // probed yet: each command reads live state at invocation time and no-ops
+  // when the extension is not yet "live".
   registerCommands(context);
 
+  // Hand off to the asynchronous half: resolve git, the target repository and
+  // the base branch, then start the event listeners. Failures are caught here
+  // and parked in the `unavailable` state rather than thrown, so a bad git
+  // setup degrades to an explanatory status bar instead of crashing activation.
   void initialize(context).catch((err: unknown) => {
     logChannel.error(`Initialization failed: ${stringifyError(err)}`);
     setState({
