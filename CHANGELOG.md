@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-07
+
+### Changed
+
+- Japanese hover and badge text now reads "{0} と比べて変更されています", keeping the "relative to the base branch" sense (it previously read as "changed by {0}").
+
+### Fixed
+
+- A rare incorrect badge that could appear if the repository root changed while a file's path was still being resolved.
+
 ## [0.1.0] - 2026-06-07
 
 First stable release.
