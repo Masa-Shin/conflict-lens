@@ -60,7 +60,19 @@ You can also check the upstream changes from the hover menu on a highlighted lin
 
 ### From the Marketplace
 
-<< Add once published >>
+1. Open the Extensions view in VS Code (`Cmd`/`Ctrl` + `Shift` + `X`)
+2. Search for "Conflict Lens"
+3. Click Install
+
+Or install from the command line:
+
+```sh
+code --install-extension Masa-Shin.conflict-lens
+```
+
+You can also open the [Marketplace page](https://marketplace.visualstudio.com/items?itemName=Masa-Shin.conflict-lens) directly.
+
+> This is currently a pre-release. Use "Install Pre-Release Version" in the Extensions view to get the latest build.
 
 ## Usage
 
