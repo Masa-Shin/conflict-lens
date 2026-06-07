@@ -126,7 +126,6 @@ code --install-extension Masa-Shin.conflict-lens
 | キー | デフォルト | 範囲 | 説明 |
 |---|---|---|---|
 | `conflictLens.enabled` | `true` | bool | 拡張全体の on/off |
-| `conflictLens.baseBranch` | `""`（自動検出） | string | 比較対象。空で自動検出 |
 | `conflictLens.remoteName` | `origin` | string | 自動検出で使うリモート名 |
 | `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーにハイライト位置を表示するか |
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
