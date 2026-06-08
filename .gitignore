@@ -143,7 +143,5 @@ vite.config.ts.timestamp-*
 .vite/
 
 # Design documents (managed outside git)
-specification.md
-TASKS.md
-FUTURE.md
+docs/
 *.vsix
