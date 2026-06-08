@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Internal
+
+- Added VS Code integration tests (`@vscode/test-electron`) covering activation, command registration, and end-to-end base-branch auto-detection on a `master` repository, run on a dedicated CI job (Linux + xvfb).
+
 ## [0.1.1] - 2026-06-07
 
 ### Changed

@@ -35,3 +35,15 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build:prod
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # VS Code needs a display; xvfb provides a headless one on Linux.
+      - run: xvfb-run -a npm run test:integration
