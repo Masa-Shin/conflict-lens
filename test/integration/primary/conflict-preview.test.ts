@@ -2,7 +2,7 @@ import * as assert from 'node:assert';
 
 import * as vscode from 'vscode';
 
-import { findOpenDoc, waitFor, workspaceFile } from './helpers';
+import { findOpenDoc, waitFor, workspaceFile } from '../helpers';
 
 const PREVIEW_SCHEME = 'conflict-lens-preview';
 

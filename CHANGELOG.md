@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- Added VS Code integration tests (`@vscode/test-electron`) run on a dedicated CI job (Linux + xvfb). They cover activation and command registration, plus end-to-end checks against a real git fixture: base-branch auto-detection falling through to `master`, the base side of Show Base Branch Changes carrying the base branch's content, and Preview Conflict producing real conflict markers for a file changed on both sides.
+- Added a VS Code integration test suite (`@vscode/test-electron`) on a dedicated CI job (Linux + xvfb), driving real git fixtures end to end: activation and command registration; base-branch auto-detection (both `origin/main` and the `master` fallback); Show Base Branch Changes content and direction, including a file deleted on the base; Preview Conflict for single, multiple, no-conflict, and modify/delete cases; picking up a fetched upstream move; re-evaluation after switching the current branch; the on-demand commands still working while the extension is disabled; and a repository with no base branch degrading gracefully.
 
 ## [0.1.1] - 2026-06-07
 

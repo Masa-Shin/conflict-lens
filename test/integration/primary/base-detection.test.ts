@@ -2,7 +2,7 @@ import * as assert from 'node:assert';
 
 import * as vscode from 'vscode';
 
-import { findDiffTabFor, waitFor, workspaceFile } from './helpers';
+import { findDiffTabFor, waitFor, workspaceFile } from '../helpers';
 
 describe('Show Base Branch Changes (master auto-detection)', () => {
   // The fixture workspace (see .vscode-test.mjs) is a `master` repo whose
