@@ -7,16 +7,27 @@ import { defineConfig } from '@vscode/test-cli';
 
 /**
  * Build a throwaway git repository for the integration tests and return its
- * path. The repo lives on `master` and has an `origin/master`
- * remote-tracking ref (plus `origin/HEAD` -> master) but deliberately NO
- * `origin/main`. That forces Conflict Lens's base-branch auto-detection to
- * fall through to `master` — the exact path the 0.0.3 default-baseBranch bug
- * broke — so the suite regresses against it.
+ * path. It exercises the real end-to-end behaviour the unit tests can't:
+ *
+ *  - Branch `master` with an `origin/master` remote-tracking ref (and
+ *    `origin/HEAD` -> master) but NO `origin/main`, so base-branch
+ *    auto-detection must fall through to `master` — the path the 0.0.3
+ *    default-baseBranch bug broke.
+ *  - `changed.txt`: modified on the base only (HEAD left it alone) — a
+ *    base-side change with no conflict, for "Show Base Branch Changes".
+ *  - `conflict.txt`: modified on BOTH the base and HEAD on the same line,
+ *    so a trial merge conflicts — for "Preview Conflict".
+ *
+ * Layout (HEAD = feature, base = origin/master):
+ *
+ *   A (master, pushed to origin)   ── merge-base
+ *   ├─ B (master advanced: edits changed.txt and conflict.txt, pushed)
+ *   └─ C (feature from A: edits conflict.txt differently)  ← HEAD
  *
  * Runs in Node before VS Code launches; the folder is then opened as the
  * test workspace so the built-in git extension detects it.
  */
-function createMasterFixtureWorkspace() {
+function createFixtureWorkspace() {
   const root = mkdtempSync(join(tmpdir(), 'conflict-lens-it-'));
   const repo = join(root, 'repo');
   const origin = join(root, 'origin.git');
@@ -32,26 +43,42 @@ function createMasterFixtureWorkspace() {
     GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_CONFIG_SYSTEM: '/dev/null',
   };
-  const git = (args, cwd) => execFileSync('git', args, { cwd, env, stdio: 'ignore' });
+  const git = (args) => execFileSync('git', args, { cwd: repo, env, stdio: 'ignore' });
+  const write = (name, content) => writeFileSync(join(repo, name), content);
 
-  git(['init', '-b', 'master'], repo);
-  writeFileSync(join(repo, 'file.txt'), 'line1\nline2\nline3\n');
-  git(['add', '.'], repo);
-  git(['commit', '-m', 'init'], repo);
+  // A: common ancestor.
+  git(['init', '-b', 'master']);
+  write('changed.txt', 'a\nb\nc\n');
+  write('conflict.txt', 'x\ny\nz\n');
+  git(['add', '.']);
+  git(['commit', '-m', 'init']);
+  git(['branch', 'feature']); // feature pinned at A
 
-  git(['init', '--bare', '-b', 'master'], origin);
-  git(['remote', 'add', 'origin', origin], repo);
-  git(['push', '-u', 'origin', 'master'], repo);
-  git(['fetch', 'origin'], repo);
-  // Point refs/remotes/origin/HEAD at master so symbolic-ref detection works.
-  git(['remote', 'set-head', 'origin', 'master'], repo);
+  execFileSync('git', ['init', '--bare', '-b', 'master'], { cwd: origin, env, stdio: 'ignore' });
+  git(['remote', 'add', 'origin', origin]);
+  git(['push', '-u', 'origin', 'master']); // origin/master = A
+
+  // B: advance the base branch.
+  write('changed.txt', 'a\nB-base\nc\n');
+  write('conflict.txt', 'x\nY-base\nz\n');
+  git(['add', '.']);
+  git(['commit', '-m', 'base changes']);
+  git(['push', 'origin', 'master']); // origin/master = B
+  git(['fetch', 'origin']);
+  git(['remote', 'set-head', 'origin', 'master']); // refs/remotes/origin/HEAD -> master
+
+  // C: diverge HEAD so conflict.txt conflicts with the base.
+  git(['checkout', 'feature']); // HEAD = feature = A
+  write('conflict.txt', 'x\nY-head\nz\n');
+  git(['add', '.']);
+  git(['commit', '-m', 'head change']);
 
   return repo;
 }
 
 export default defineConfig({
   files: 'out/test/integration/**/*.test.js',
-  workspaceFolder: createMasterFixtureWorkspace(),
+  workspaceFolder: createFixtureWorkspace(),
   mocha: {
     ui: 'bdd',
     timeout: 60000,
