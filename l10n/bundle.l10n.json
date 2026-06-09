@@ -58,5 +58,7 @@
   "{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes.": "{0}: this file is changed on the base branch, but it is too large to highlight. Click to show the base changes.",
   "{0}: {1} is a binary file; nothing to compare as text.": "{0}: {1} is a binary file; nothing to compare as text.",
   "not in the current branch": "not in the current branch",
-  "{0}: {1} does not exist in the current branch.": "{0}: {1} does not exist in the current branch."
+  "{0}: {1} does not exist in the current branch.": "{0}: {1} does not exist in the current branch.",
+  "{0}: registration command copied. Paste it in your terminal to register with Claude Code.": "{0}: registration command copied. Paste it in your terminal to register with Claude Code.",
+  "{0}: registration command copied. Turn on conflictLens.mcp.enabled so the server can answer.": "{0}: registration command copied. Turn on conflictLens.mcp.enabled so the server can answer."
 }
