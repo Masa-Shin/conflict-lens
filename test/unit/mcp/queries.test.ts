@@ -53,4 +53,18 @@ describe('getBaseChange', () => {
     );
     expect((await run(s, 'new.txt')).change).toBe('added');
   });
+
+  it('handles a filename containing glob characters literally', async () => {
+    const s = start(
+      setupScenario({
+        root: { 'a[b].ts': FIVE },
+        baseChange: (t) => t.write('a[b].ts', 'l1\nl2\nl3-base\nl4\nl5\n'),
+      }),
+    );
+    // Without GIT_LITERAL_PATHSPECS the pathspec `a[b].ts` is a char class and
+    // matches nothing, yielding change 'none'.
+    const change = await run(s, 'a[b].ts');
+    expect(change.change).toBe('modified');
+    expect(change.diff).toContain('l3-base');
+  });
 });

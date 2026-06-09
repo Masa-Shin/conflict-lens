@@ -751,7 +751,9 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
   };
 
   const activeEditor = vscode.window.activeTextEditor;
-  const editorResults = await Promise.all(
+  // allSettled, not all: one file's transient git error must not drop the
+  // whole pass's highlights — the other editors still update.
+  const settled = await Promise.allSettled(
     editors.map((editor) =>
       applyToEditor(editor, inputs).then((result) => ({
         editor,
@@ -759,6 +761,14 @@ async function refreshDocumentNow(document: vscode.TextDocument): Promise<void> 
       })),
     ),
   );
+  for (const r of settled) {
+    if (r.status === 'rejected') {
+      runtime?.logChannel.warn(
+        `Decoration refresh failed for an editor: ${stringifyError(r.reason)}`,
+      );
+    }
+  }
+  const editorResults = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
 
   // Only touch the active-editor indicators when the active editor was among
   // the ones we just refreshed. If the user is editing a buffer while focused
@@ -837,7 +847,9 @@ async function refreshDecorationsNow(): Promise<void> {
   if (isSuperseded()) return;
 
   const activeEditor = vscode.window.activeTextEditor;
-  const editorResults = await Promise.all(
+  // allSettled, not all: one file's transient git error must not drop the
+  // whole pass's highlights — the other editors still update.
+  const settled = await Promise.allSettled(
     editors.map((editor) =>
       applyToEditor(editor, inputs).then((result) => ({
         editor,
@@ -845,6 +857,14 @@ async function refreshDecorationsNow(): Promise<void> {
       })),
     ),
   );
+  for (const r of settled) {
+    if (r.status === 'rejected') {
+      runtime?.logChannel.warn(
+        `Decoration refresh failed for an editor: ${stringifyError(r.reason)}`,
+      );
+    }
+  }
+  const editorResults = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
 
   if (isSuperseded()) return;
 

@@ -66,6 +66,10 @@ export const SECURE_ENV: Readonly<NodeJS.ProcessEnv> = Object.freeze({
   GIT_ASKPASS: 'true',
   SSH_ASKPASS: 'true',
   LC_ALL: 'C.UTF-8',
+  // Treat every `-- <path>` pathspec literally. We never pass globs, and
+  // without this a real filename containing `*`, `?`, or `[...]` is parsed as
+  // a wildcard and matches the wrong file (or nothing) — dropping its diff.
+  GIT_LITERAL_PATHSPECS: '1',
 });
 
 const NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null';

@@ -78,7 +78,12 @@ describe('createMcpServer (in-memory MCP round-trip)', () => {
 
   it('lists base changes', async () => {
     const result = await client.callTool({ name: 'list_base_changes', arguments: {} });
-    expect(parseText(result)).toEqual({ status: 'ok', baseBranch: 'main', files: ['layout.tsx'] });
+    expect(parseText(result)).toEqual({
+      status: 'ok',
+      baseBranch: 'main',
+      files: ['layout.tsx'],
+      generatedAt: '2026-06-08T00:00:00.000Z',
+    });
   });
 
   it('reports the base-side deletion in full', async () => {

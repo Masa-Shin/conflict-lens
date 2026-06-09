@@ -86,6 +86,7 @@ describe('listBaseChanges', () => {
       status: 'ok',
       baseBranch: 'main',
       files: ['foo.txt'],
+      generatedAt: '2026-06-08T00:00:00.000Z',
     });
   });
 

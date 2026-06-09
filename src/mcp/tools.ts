@@ -79,13 +79,18 @@ export async function listBaseChanges(ctx: ToolContext, paths?: string[]): Promi
   if (!found || !isResolved(found.state)) return UNRESOLVED;
   const { state } = found;
   if (!paths || paths.length === 0) {
-    return { status: 'ok', baseBranch: state.baseBranch, files: state.changedFiles };
+    return {
+      status: 'ok',
+      baseBranch: state.baseBranch,
+      files: state.changedFiles,
+      generatedAt: state.generatedAt,
+    };
   }
   const results = paths.map((p) => {
     const rel = toRepoRelativePosix(p, state.repoRoot, ctx.cwd);
     return { path: p, changedOnBase: rel !== null && isChangedOnBase(rel, state.changedFiles) };
   });
-  return { status: 'ok', baseBranch: state.baseBranch, results };
+  return { status: 'ok', baseBranch: state.baseBranch, results, generatedAt: state.generatedAt };
 }
 
 /** Return the base branch's own diff for one file (merge-base → base tip). */
@@ -99,7 +104,12 @@ export async function getBaseChanges(ctx: ToolContext, inputPath: string): Promi
     return { status: 'invalid_path', message: `Path is outside the repository: ${inputPath}` };
   }
   if (!isChangedOnBase(rel, state.changedFiles)) {
-    return { status: 'unchanged', path: rel, baseBranch: state.baseBranch };
+    return {
+      status: 'unchanged',
+      path: rel,
+      baseBranch: state.baseBranch,
+      generatedAt: state.generatedAt,
+    };
   }
   let result;
   try {
@@ -118,6 +128,7 @@ export async function getBaseChanges(ctx: ToolContext, inputPath: string): Promi
       status: 'stale',
       path: rel,
       baseBranch: state.baseBranch,
+      generatedAt: state.generatedAt,
       message:
         'The recorded base endpoints are no longer resolvable (the repository may have been ' +
         'gc-ed or rebased). Refresh Conflict Lens to update them.',
@@ -130,5 +141,6 @@ export async function getBaseChanges(ctx: ToolContext, inputPath: string): Promi
     change: result.change,
     diff: result.diff,
     truncated: result.truncated,
+    generatedAt: state.generatedAt,
   };
 }

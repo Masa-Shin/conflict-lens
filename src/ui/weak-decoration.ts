@@ -334,10 +334,19 @@ export class WeakDecorationCoordinator implements vscode.Disposable {
           readBlob: inputs.readBlob,
           signal,
         });
+        // The up-front gate only sees the buffer (right side). If the
+        // merge-base blob (left side) is huge, the entry exceeds the cache's
+        // per-entry cap and would be rejected — so it would re-spawn git and
+        // re-read the blob on every keystroke. Cache a small empty sentinel
+        // instead: no highlights for that file, but no per-keystroke thrash.
+        const cacheable =
+          sizeOfBaseDiff(baseDiff) <= BASE_DIFF_CACHE_MAX_ENTRY_BYTES
+            ? baseDiff
+            : { hunks: [], leftContent: '' };
         if (!this.disposed && !signal.aborted) {
-          this.baseDiffCache.set(key, baseDiff);
+          this.baseDiffCache.set(key, cacheable);
         }
-        return baseDiff;
+        return cacheable;
       } finally {
         if (this.baseDiffInflight.get(key) === promise) {
           this.baseDiffInflight.delete(key);
