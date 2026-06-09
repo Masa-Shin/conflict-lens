@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -15,8 +15,17 @@ const GIT_ENV = {
   GIT_CONFIG_SYSTEM: '/dev/null',
 };
 
+// Fixture temp roots, removed when the runner process exits so a repeated
+// local `npm run test:integration` doesn't pile up conflict-lens-it-* dirs.
+const tempRoots = [];
+process.on('exit', () => {
+  for (const dir of tempRoots) rmSync(dir, { recursive: true, force: true });
+});
+
 function freshDir(prefix) {
-  return mkdtempSync(join(tmpdir(), prefix));
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempRoots.push(dir);
+  return dir;
 }
 
 function gitRunner(cwd) {
