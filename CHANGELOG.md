@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-09
+
+### Added
+
+- AI agent integration over MCP (Model Context Protocol). With `conflictLens.mcp.enabled` (on by default), the extension keeps a small state file under `.git/conflict-lens/` recording the resolved base branch, its merge-base and tip, and the files the base changed. A bundled stdio MCP server (`dist/mcp-server.js`) exposes this to MCP clients such as Claude Code through three tools: `get_base_context` (the resolved base branch and merge-base), `list_base_changes` (the files the base branch changed), and `get_base_changes` (a file's base-side diff). An AI agent can use them to account for what the base branch changed while it edits — for example, to avoid conflicting with the base, or to flag a likely conflict to you. Run **Copy Claude Code MCP Registration Command** to register it with Claude Code; other MCP clients launch `node <extension>/dist/mcp-server.js`.
+
 ### Internal
 
 - Added a VS Code integration test suite (`@vscode/test-electron`) on a dedicated CI job (Linux + xvfb), driving real git fixtures end to end: activation and command registration; base-branch auto-detection (both `origin/main` and the `master` fallback); Show Base Branch Changes content and direction, including a file deleted on the base; Preview Conflict for single, multiple, no-conflict, and modify/delete cases; picking up a fetched upstream move; re-evaluation after switching the current branch; the on-demand commands still working while the extension is disabled; and a repository with no base branch degrading gracefully.
+- Added unit coverage for the MCP layer: the state file, path resolution, base-change queries, the tool handlers, and an in-memory MCP round-trip.
 
 ## [0.1.1] - 2026-06-07
 

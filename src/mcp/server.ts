@@ -1,33 +1,26 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import {
-  getBaseChanges,
-  getConflicts,
-  listBaseChanges,
-  listConflicts,
-  type ToolContext,
-} from './tools';
+import { getBaseChanges, getBaseContext, listBaseChanges, type ToolContext } from './tools';
 
 const SERVER_NAME = 'conflict-lens';
 const SERVER_VERSION = '0.1.1';
 
 /**
  * Sent in the MCP handshake. Clients (e.g. Claude Code) may inject this into
- * the model's context, so it nudges the agent to reach for these tools —
- * which resolve the base branch and run a real merge for you — instead of
- * driving git by hand when asked about conflicts with the base branch.
+ * the model's context: what the server tells you, when to use it, and which
+ * tool does what.
  */
 const INSTRUCTIONS = [
-  'Conflict Lens answers how the working tree relates to its base branch.',
-  'Prefer these tools over running git yourself for the following questions; the base branch',
-  'and merge-base are resolved automatically and your uncommitted edits are included, so you',
-  'do not need to detect the base or stash anything.',
+  'This server tells you about the base branch your work will be merged into: which branch is',
+  'the base, and what that base changed (the changed files and their diffs). Use it when you',
+  'need to account for changes on the base branch — for example, to edit without conflicting',
+  'with the base’s changes, to review what the base changed, or to check with the user when an',
+  'edit looks likely to conflict.',
   '',
-  '- "Will my current changes conflict when I merge the base?" / "Is anything conflicting?"',
-  '  -> get_conflicts (one file) or list_conflicts (all files). These run a real three-way merge.',
-  '- "What did the base branch change?" / "Which files moved on the base?"',
-  '  -> get_base_changes (one file) or list_base_changes (all files).',
+  '- get_base_context — which branch is the base (and the merge-base)',
+  '- list_base_changes — the files the base branch changed',
+  '- get_base_changes — the base-side diff for a given file',
 ].join('\n');
 
 /** Wrap a payload as an MCP text result carrying pretty-printed JSON. */
@@ -40,9 +33,9 @@ export function jsonResult(payload: unknown): { content: { type: 'text'; text: s
  * connect a transport — the caller connects stdio (production) or an
  * in-memory transport (tests).
  *
- * Two families:
- *  - base changes: what the base branch itself changed (a plain diff).
- *  - conflicts: what actually clashes on merge (a real three-way merge).
+ * The tools only relay what the extension knows about the base branch (the
+ * resolved base/merge-base and the changes it made). Actual conflict
+ * simulation is left to git.
  */
 export function createMcpServer(ctx: ToolContext): McpServer {
   const server = new McpServer(
@@ -51,33 +44,17 @@ export function createMcpServer(ctx: ToolContext): McpServer {
   );
 
   server.registerTool(
-    'list_conflicts',
+    'get_base_context',
     {
-      title: 'List files that will conflict on merge',
+      title: 'Get the resolved base branch and merge-base',
       description:
-        'Use when asked "is anything conflicting?" or "will my current changes conflict when I ' +
-        'merge the base branch?". Lists every file that actually conflicts when the base branch ' +
-        'is merged into your current working tree, decided by a real three-way merge (includes ' +
-        'modify/delete). Run this before driving git yourself.',
+        'Returns the base branch the extension resolved (may be a PR base or a branch the user ' +
+        'selected, not necessarily origin/main), its tip SHA, and the merge-base with HEAD. Get ' +
+        'the base ref here before comparing or merging; for a definitive conflict check, run git ' +
+        'merge-tree against it yourself.',
       inputSchema: {},
     },
-    async () => jsonResult(await listConflicts(ctx)),
-  );
-
-  server.registerTool(
-    'get_conflicts',
-    {
-      title: 'Get the merge conflicts in a file',
-      description:
-        'Use when asked whether a specific file conflicts with the base branch, or "does my ' +
-        'current edit to this file conflict?". Runs a real three-way merge of your on-disk ' +
-        'version against the base and returns the conflicting regions (with `<<<<<<<` markers) ' +
-        'or a modify/delete result. An empty result means it merges cleanly.',
-      inputSchema: {
-        path: z.string().describe('Repo-relative or absolute path to the file.'),
-      },
-    },
-    async ({ path: filePath }) => jsonResult(await getConflicts(ctx, filePath)),
+    async () => jsonResult(await getBaseContext(ctx)),
   );
 
   server.registerTool(
@@ -85,10 +62,10 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     {
       title: 'List files changed on the base branch',
       description:
-        'Use when asked what the base branch changed, or which files moved on the base. Lists ' +
-        'the files the base branch changed relative to the merge-base, or checks whether ' +
-        'specific paths are among them. Reads cached state; no git runs. This is what moved on ' +
-        'the base — not what will conflict (use list_conflicts for that).',
+        'Lists the files the base branch changed relative to the merge-base, or checks whether ' +
+        'given paths are among them. Reads cached state; no git runs. Check this before editing ' +
+        'to see which files the base already touched — those are where your edits risk ' +
+        'conflicting.',
       inputSchema: {
         paths: z
           .array(z.string())
@@ -104,10 +81,9 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     {
       title: 'Get the base branch’s diff for a file',
       description:
-        'Use when asked how the base branch changed a specific file. Returns the base branch’s ' +
-        'own change as the diff from the merge-base to the base tip (added / modified / ' +
-        'deleted); a whole-file deletion is reported in full. This is what the base did, ' +
-        'regardless of your local edits.',
+        'Returns the base branch’s change to one file as the diff from the merge-base to the ' +
+        'base tip (added / modified / deleted; whole-file deletion in full). Use before editing ' +
+        'a file the base also changed: the lines it changed are where your edits would conflict.',
       inputSchema: {
         path: z.string().describe('Repo-relative or absolute path to the file.'),
       },

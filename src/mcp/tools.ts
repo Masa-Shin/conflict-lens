@@ -1,9 +1,8 @@
 import * as path from 'node:path';
 
-import type { BlobReader } from '../git/blob';
 import type { GitRunner } from '../git/runner';
 import { isChangedOnBase, toRepoRelativePosix } from './paths';
-import { getBaseChange, getMergeConflict, type ConflictKind } from './queries';
+import { getBaseChange } from './queries';
 import { readConflictLensState, type ConflictLensState } from './state-file';
 
 /**
@@ -14,8 +13,6 @@ export interface ToolContext {
   /** Directory queries are resolved from (the server process cwd). */
   readonly cwd: string;
   readonly runner: GitRunner;
-  /** Blob reader, keyed by repo root so the host can cache the batch. */
-  readonly getReadBlob: (repoRoot: string) => BlobReader;
 }
 
 type ResolvedState = ConflictLensState & {
@@ -52,15 +49,24 @@ export async function findState(
   }
 }
 
-const CONFLICT_NOTES: Record<ConflictKind, string | undefined> = {
-  none: undefined,
-  content: undefined,
-  add_add: 'Both sides add this file with different content.',
-  base_deleted_local_modified: 'The base branch deleted this file; your version modifies it.',
-  local_deleted_base_modified: 'You deleted this file; the base branch modifies it.',
-};
-
-// === Base-branch changes (what the base did) ===
+/**
+ * The resolved base context: which branch is the base, and its endpoints.
+ * This is the extension-only knowledge an agent cannot easily obtain (the
+ * base may be a PR base or a manually selected branch, not origin/main); with
+ * it, the agent can run git itself for anything further.
+ */
+export async function getBaseContext(ctx: ToolContext): Promise<unknown> {
+  const found = await findState(ctx.cwd);
+  if (!found || !isResolved(found.state)) return UNRESOLVED;
+  const { state } = found;
+  return {
+    status: 'ok',
+    baseBranch: state.baseBranch,
+    baseTipSha: state.baseTipSha,
+    mergeBaseSha: state.mergeBaseSha,
+    remoteName: state.remoteName,
+  };
+}
 
 /**
  * List the files the base branch changed (vs the merge-base), or check
@@ -107,71 +113,5 @@ export async function getBaseChanges(ctx: ToolContext, inputPath: string): Promi
     change: result.change,
     diff: result.diff,
     truncated: result.truncated,
-  };
-}
-
-// === Real merge conflicts (what will actually clash) ===
-
-/**
- * List the files that actually conflict when the base branch is merged into
- * the working tree. Only files the base changed can conflict, so the search
- * is bounded by the cached changed-file set.
- */
-export async function listConflicts(ctx: ToolContext): Promise<unknown> {
-  const found = await findState(ctx.cwd);
-  if (!found || !isResolved(found.state)) return UNRESOLVED;
-  const { state } = found;
-  const readBlob = ctx.getReadBlob(state.repoRoot);
-  const files: { path: string; kind: ConflictKind }[] = [];
-  for (const f of state.changedFiles) {
-    const result = await getMergeConflict(
-      ctx.runner,
-      readBlob,
-      state.repoRoot,
-      state.mergeBaseSha,
-      state.baseTipSha,
-      f,
-    );
-    if (result.conflicting) files.push({ path: f, kind: result.kind });
-  }
-  return { status: 'ok', baseBranch: state.baseBranch, files };
-}
-
-/** Return the actual merge conflicts in one file. */
-export async function getConflicts(ctx: ToolContext, inputPath: string): Promise<unknown> {
-  const found = await findState(ctx.cwd);
-  if (!found || !isResolved(found.state)) return UNRESOLVED;
-  const { state } = found;
-
-  const rel = toRepoRelativePosix(inputPath, state.repoRoot, ctx.cwd);
-  if (rel === null) {
-    return { status: 'invalid_path', message: `Path is outside the repository: ${inputPath}` };
-  }
-  if (!isChangedOnBase(rel, state.changedFiles)) {
-    // The base did not touch this file, so merging it cannot conflict.
-    return {
-      status: 'ok',
-      path: rel,
-      baseBranch: state.baseBranch,
-      conflicting: false,
-      conflicts: [],
-    };
-  }
-  const result = await getMergeConflict(
-    ctx.runner,
-    ctx.getReadBlob(state.repoRoot),
-    state.repoRoot,
-    state.mergeBaseSha,
-    state.baseTipSha,
-    rel,
-  );
-  return {
-    status: 'ok',
-    path: rel,
-    baseBranch: state.baseBranch,
-    conflicting: result.conflicting,
-    kind: result.kind,
-    conflicts: result.regions,
-    note: CONFLICT_NOTES[result.kind],
   };
 }

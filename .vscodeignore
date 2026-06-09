@@ -17,8 +17,7 @@ out/**
 .vscode-test.mjs
 .oxlintrc.json
 .oxfmtrc.json
-specification.md
-TASKS.md
-FUTURE.md
+docs/**
+*.vsix
 .gitignore
 .gitattributes
