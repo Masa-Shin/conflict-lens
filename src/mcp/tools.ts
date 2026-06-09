@@ -65,6 +65,8 @@ export async function getBaseContext(ctx: ToolContext): Promise<unknown> {
     baseTipSha: state.baseTipSha,
     mergeBaseSha: state.mergeBaseSha,
     remoteName: state.remoteName,
+    generatedAt: state.generatedAt,
+    note: 'Snapshot recorded at generatedAt; the base branch or HEAD may have moved since. Re-query before relying on it.',
   };
 }
 
@@ -99,13 +101,28 @@ export async function getBaseChanges(ctx: ToolContext, inputPath: string): Promi
   if (!isChangedOnBase(rel, state.changedFiles)) {
     return { status: 'unchanged', path: rel, baseBranch: state.baseBranch };
   }
-  const result = await getBaseChange(
-    ctx.runner,
-    state.repoRoot,
-    state.mergeBaseSha,
-    state.baseTipSha,
-    rel,
-  );
+  let result;
+  try {
+    result = await getBaseChange(
+      ctx.runner,
+      state.repoRoot,
+      state.mergeBaseSha,
+      state.baseTipSha,
+      rel,
+    );
+  } catch {
+    // The recorded endpoints (merge-base / base tip) no longer resolve —
+    // e.g. after a gc or rebase dropped the commits. Report stale rather
+    // than failing the call.
+    return {
+      status: 'stale',
+      path: rel,
+      baseBranch: state.baseBranch,
+      message:
+        'The recorded base endpoints are no longer resolvable (the repository may have been ' +
+        'gc-ed or rebased). Refresh Conflict Lens to update them.',
+    };
+  }
   return {
     status: 'ok',
     path: rel,

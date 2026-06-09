@@ -53,12 +53,13 @@ describe('getBaseContext', () => {
       baseChange: (t) => t.write('foo.txt', 'l1\nl2\nl3-base\nl4\nl5\n'),
     });
     const ctx = await start(scenario, ['foo.txt']);
-    expect(await getBaseContext(ctx)).toEqual({
+    expect(await getBaseContext(ctx)).toMatchObject({
       status: 'ok',
       baseBranch: 'main',
       baseTipSha: scenario.baseTipSha,
       mergeBaseSha: scenario.mergeBaseSha,
       remoteName: 'origin',
+      generatedAt: '2026-06-08T00:00:00.000Z',
     });
   });
 
@@ -143,6 +144,19 @@ describe('getBaseChanges', () => {
     );
     expect((await getBaseChanges(ctx, '../escape.ts')) as { status: string }).toMatchObject({
       status: 'invalid_path',
+    });
+  });
+
+  it('reports stale when the recorded endpoints no longer resolve', async () => {
+    // Override the base tip with a SHA that does not exist, so the git diff
+    // fails — as it would after a gc or rebase dropped the commit.
+    const ctx = await start(
+      setupScenario({ root: { 'foo.txt': FIVE }, baseChange: (t) => t.remove('foo.txt') }),
+      ['foo.txt'],
+      { baseTipSha: '0000000000000000000000000000000000000000' },
+    );
+    expect((await getBaseChanges(ctx, 'foo.txt')) as { status: string }).toMatchObject({
+      status: 'stale',
     });
   });
 });

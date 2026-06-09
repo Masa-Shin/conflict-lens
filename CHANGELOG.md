@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-06-09
+
+### Fixed
+
+- Disabling the extension (`conflictLens.enabled`) now also stops the MCP integration and removes its state file, instead of continuing to write it.
+- `get_base_changes` returns a `stale` status instead of erroring when the recorded base endpoints can no longer be resolved (e.g. after a gc or rebase).
+- Path resolution is now realpath-aware, so a file in a workspace opened through a symbolic link is no longer mistaken for being outside the repository.
+- The Claude Code registration command points at a version-independent path (the extension's global storage), so it keeps working after the extension updates instead of needing re-registration.
+- `get_base_context` now reports `generatedAt` and notes that its snapshot may be stale, so an agent can tell when to re-query.
+
+### Internal
+
+- The MCP server version is taken from `package.json` at build time rather than a hardcoded constant.
+
 ## [1.0.1] - 2026-06-09
 
 Corrective release to publish the base-context MCP server (`get_base_context`, `list_base_changes`, `get_base_changes`) intended for 1.0.0.

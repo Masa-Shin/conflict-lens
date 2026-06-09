@@ -72,10 +72,10 @@ const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
 /**
- * Opt-in for the Claude Code integration. When on, the extension keeps a
- * small state file fresh under `.git/conflict-lens/` so the MCP server can
- * answer conflict-risk queries; off by default so nothing is written for
- * users who have not opted in. See docs/claude-code-integration.md.
+ * Toggle for the Claude Code / MCP integration. On by default: the extension
+ * keeps a small state file fresh under `.git/conflict-lens/` so the MCP
+ * server can report the base branch and what it changed. Turn it off to stop
+ * writing the file.
  */
 const MCP_ENABLED_SETTING = 'mcp.enabled';
 /**
@@ -228,6 +228,15 @@ export function activate(context: vscode.ExtensionContext): void {
   // when the extension is not yet "live".
   registerCommands(context);
 
+  // Stage the bundled MCP server at a version-independent path so a registered
+  // `claude mcp add` command keeps working across extension updates (the
+  // install directory is versioned and replaced on update).
+  try {
+    stageMcpServer(context);
+  } catch (err) {
+    runtime?.logChannel.warn(`MCP server staging failed: ${stringifyError(err)}`);
+  }
+
   // Hand off to the asynchronous half: resolve git, the target repository and
   // the base branch, then start the event listeners. Failures are caught here
   // and parked in the `unavailable` state rather than thrown, so a bad git
@@ -363,7 +372,10 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       if (event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_CHECK_INTERVAL_SETTING}`)) {
         startOrRestartRemoteCheckTimer();
       }
-      if (event.affectsConfiguration(`${CONFIG_NAMESPACE}.${MCP_ENABLED_SETTING}`)) {
+      if (
+        enabledChanged ||
+        event.affectsConfiguration(`${CONFIG_NAMESPACE}.${MCP_ENABLED_SETTING}`)
+      ) {
         syncMcpStateNow();
       }
       // git.autofetch flips whether we poll at all: turning it off starts
@@ -1358,6 +1370,15 @@ function isMcpEnabled(): boolean {
 }
 
 /**
+ * Whether the MCP state file should be maintained: both the extension as a
+ * whole and the MCP integration must be on. Disabling the extension
+ * (`conflictLens.enabled`) stops the writes too, not just the highlights.
+ */
+function isMcpActive(): boolean {
+  return isEnabled() && isMcpEnabled();
+}
+
+/**
  * Monotonic token guarding the async state-file writes against reordering.
  * A slow `listChangedFilesOnBase` from an earlier change must not overwrite
  * a snapshot produced by a newer one; each write checks it still holds the
@@ -1389,7 +1410,7 @@ function mcpStateSignature(state: ExtensionState): string {
  * Fire-and-forget: the file is a side channel and never sits on the UI path.
  */
 function syncMcpStateOnChange(previous: ExtensionState, next: ExtensionState): void {
-  if (!isMcpEnabled()) return;
+  if (!isMcpActive()) return;
   if (mcpStateSignature(previous) === mcpStateSignature(next)) return;
   const seq = ++mcpSyncSeq;
   void runMcpStateSync(next, seq).catch((err) => {
@@ -1407,7 +1428,7 @@ function syncMcpStateNow(): void {
   if (currentState.kind !== 'live') return;
   const repoRoot = currentState.context.repository.rootPath;
   const seq = ++mcpSyncSeq;
-  if (!isMcpEnabled()) {
+  if (!isMcpActive()) {
     void deleteConflictLensState(repoRoot).catch((err) => {
       runtime?.logChannel.warn(`MCP state delete failed: ${stringifyError(err)}`);
     });
@@ -1581,14 +1602,39 @@ function registerCommands(context: vscode.ExtensionContext): void {
   );
 }
 
+/** Version-independent location of the staged MCP server (survives updates). */
+function stagedMcpServerPath(context: vscode.ExtensionContext): string {
+  return vscode.Uri.joinPath(context.globalStorageUri, 'mcp-server.js').fsPath;
+}
+
 /**
- * Copy the one-off shell command that registers the bundled stdio MCP
- * server with Claude Code. The server path points at `dist/mcp-server.js`
- * inside this installed extension; quoting guards paths that contain
- * spaces.
+ * Copy the bundled MCP server into the extension's global storage, whose path
+ * does not change when the extension updates, and return that path. The
+ * versioned install directory (`…/conflict-lens-1.2.3/`) is removed on update,
+ * which would otherwise break a `claude mcp add` registration.
+ */
+function stageMcpServer(context: vscode.ExtensionContext): string {
+  const source = vscode.Uri.joinPath(context.extensionUri, 'dist', 'mcp-server.js').fsPath;
+  const dest = stagedMcpServerPath(context);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(source, dest);
+  return dest;
+}
+
+/**
+ * Copy the one-off shell command that registers the bundled stdio MCP server
+ * with Claude Code. Points at the staged copy in global storage (not the
+ * versioned install dir) so the registration survives extension updates;
+ * quoting guards paths that contain spaces.
  */
 async function copyMcpRegistrationCommand(context: vscode.ExtensionContext): Promise<void> {
-  const serverPath = vscode.Uri.joinPath(context.extensionUri, 'dist', 'mcp-server.js').fsPath;
+  let serverPath: string;
+  try {
+    serverPath = stageMcpServer(context);
+  } catch (err) {
+    runtime?.logChannel.warn(`MCP server staging failed: ${stringifyError(err)}`);
+    serverPath = stagedMcpServerPath(context);
+  }
   const registration = `claude mcp add conflict-lens -- node "${serverPath}"`;
   await vscode.env.clipboard.writeText(registration);
   const message = isMcpEnabled()

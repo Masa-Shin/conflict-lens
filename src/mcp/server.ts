@@ -4,7 +4,11 @@ import { z } from 'zod';
 import { getBaseChanges, getBaseContext, listBaseChanges, type ToolContext } from './tools';
 
 const SERVER_NAME = 'conflict-lens';
-const SERVER_VERSION = '0.1.1';
+// Injected from package.json at build time via esbuild `define`. Undefined
+// under plain test transforms (no define), so fall back to a dev marker.
+declare const __CONFLICT_LENS_VERSION__: string | undefined;
+const SERVER_VERSION =
+  typeof __CONFLICT_LENS_VERSION__ === 'string' ? __CONFLICT_LENS_VERSION__ : '0.0.0-dev';
 
 /**
  * Sent in the MCP handshake. Clients (e.g. Claude Code) may inject this into
