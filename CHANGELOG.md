@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-10
+
+### Fixed
+
+- Filenames containing glob characters (`*`, `?`, `[ ]`) are now matched literally; previously their diffs and highlights could be dropped or attributed to the wrong file (git pathspecs are treated as literal via `GIT_LITERAL_PATHSPECS`).
+- `list_base_changes` and `get_base_changes` now also report `generatedAt`, so an agent can judge snapshot freshness from any tool (previously only `get_base_context` did).
+- A transient git error on one file no longer drops the whole highlight refresh: each editor is updated independently, so the others still repaint.
+- A file whose merge-base version is very large no longer re-runs git on every keystroke; the oversized base diff is no longer refetched once seen.
+- Conflict Preview normalizes line endings before merging, so a CRLF working copy against LF blobs no longer manufactures spurious conflicts.
+
 ## [1.0.2] - 2026-06-09
 
 ### Fixed
@@ -16,12 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The MCP state file is now removed when the repository drops out of the live state (not only when the integration is toggled off), so the server stops serving a stale snapshot.
 - `get_base_changes` returns a `stale` status instead of erroring when the recorded base endpoints can no longer be resolved (e.g. after a gc or rebase).
 - Path resolution is now realpath-aware, so a file in a workspace opened through a symbolic link is no longer mistaken for being outside the repository.
-- Filenames containing glob characters (`*`, `?`, `[ ]`) are now matched literally; previously their diffs and highlights could be dropped or attributed to the wrong file (git pathspecs are treated as literal via `GIT_LITERAL_PATHSPECS`).
 - The Claude Code registration command points at a version-independent path (the extension's global storage), so it keeps working after the extension updates instead of needing re-registration.
-- Every MCP tool now reports `generatedAt` (with a staleness note on `get_base_context`), so an agent can tell how fresh the snapshot is and when to re-query.
-- A transient git error on one file no longer drops the whole highlight refresh: each editor is updated independently, so the others still repaint.
-- A file whose merge-base version is very large no longer re-runs git on every keystroke; the oversized base diff is no longer refetched once seen.
-- Conflict Preview normalizes line endings before merging, so a CRLF working copy against LF blobs no longer manufactures spurious conflicts.
+- `get_base_context` now reports `generatedAt` and notes that its snapshot may be stale, so an agent can tell when to re-query.
 
 ### Internal
 
