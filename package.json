@@ -96,6 +96,11 @@
         "command": "conflictLens.showOutputChannel",
         "title": "%conflictLens.command.showOutputChannel.title%",
         "category": "%conflictLens.command.category%"
+      },
+      {
+        "command": "conflictLens.copyMcpRegistration",
+        "title": "%conflictLens.command.copyMcpRegistration.title%",
+        "category": "%conflictLens.command.category%"
       }
     ],
     "configuration": {
@@ -133,6 +138,12 @@
           "maximum": 1440,
           "scope": "window",
           "description": "%conflictLens.config.remoteCheckIntervalMinutes.description%"
+        },
+        "conflictLens.mcp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%conflictLens.config.mcp.enabled.description%"
         }
       }
     },
@@ -191,6 +202,8 @@
     "vitest": "^4.1.8"
   },
   "dependencies": {
-    "diff": "^9.0.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "diff": "^9.0.0",
+    "zod": "^4.4.3"
   }
 }

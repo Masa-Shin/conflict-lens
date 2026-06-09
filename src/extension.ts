@@ -28,6 +28,12 @@ import {
 } from './git/repository';
 import { detectGitState, isStateBlockingHighlights, type GitState } from './git/state';
 import { t } from './l10n';
+import {
+  STATE_SCHEMA_VERSION,
+  deleteConflictLensState,
+  writeConflictLensState,
+  type ConflictLensState,
+} from './mcp/state-file';
 import { FileDecorationCoordinator, type FileDecorationSettings } from './ui/file-decoration';
 import {
   WeakDecorationCoordinator,
@@ -65,6 +71,13 @@ const ENABLED_SETTING = 'enabled';
 const SHOW_OVERVIEW_RULER_SETTING = 'showOverviewRuler';
 const SHOW_FILE_DECORATION_BADGES_SETTING = 'showFileDecorationBadges';
 const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
+/**
+ * Opt-in for the Claude Code integration. When on, the extension keeps a
+ * small state file fresh under `.git/conflict-lens/` so the MCP server can
+ * answer conflict-risk queries; off by default so nothing is written for
+ * users who have not opted in. See docs/claude-code-integration.md.
+ */
+const MCP_ENABLED_SETTING = 'mcp.enabled';
 /**
  * Custom URI scheme used by the "Show Base Branch Changes" command to
  * feed the base-side blob into VSCode's built-in diff editor. URIs look like
@@ -156,7 +169,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // Log output channel — the single sink for diagnostics, surfaced to the
   // user via the "Show Output Channel" command. Created first so every later
   // step can log into it.
-  const logChannel = vscode.window.createOutputChannel(EXTENSION_NAME, { log: true });
+  const logChannel = vscode.window.createOutputChannel(EXTENSION_NAME, {
+    log: true,
+  });
   context.subscriptions.push(logChannel);
   logChannel.info(t('{0} activated.', EXTENSION_NAME));
 
@@ -348,6 +363,9 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       if (event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_CHECK_INTERVAL_SETTING}`)) {
         startOrRestartRemoteCheckTimer();
       }
+      if (event.affectsConfiguration(`${CONFIG_NAMESPACE}.${MCP_ENABLED_SETTING}`)) {
+        syncMcpStateNow();
+      }
       // git.autofetch flips whether we poll at all: turning it off starts
       // the timer, turning it on stops it.
       if (event.affectsConfiguration('git.autofetch')) {
@@ -500,7 +518,11 @@ async function refreshBaseBranch(): Promise<void> {
       if (prev.kind !== 'live') return prev;
       return {
         kind: 'live',
-        context: { ...prev.context, baseBranch: undefined, baseBranchSource: undefined },
+        context: {
+          ...prev.context,
+          baseBranch: undefined,
+          baseBranchSource: undefined,
+        },
       };
     });
     scheduleDecorationRefresh();
@@ -523,7 +545,11 @@ async function refreshBaseBranch(): Promise<void> {
     if (prev.kind !== 'live') return prev;
     return {
       kind: 'live',
-      context: { ...prev.context, baseBranch: undefined, baseBranchSource: undefined },
+      context: {
+        ...prev.context,
+        baseBranch: undefined,
+        baseBranchSource: undefined,
+      },
     };
   });
   scheduleDecorationRefresh();
@@ -1208,7 +1234,12 @@ async function safeDetectGitState(
     // unequal here and reliably re-triggers the cache / merge-base refresh
     // chain. Using `undefined` rather than `''` keeps the "unknown" case
     // out of any code path that would otherwise pass it to git as a ref.
-    return { kind: 'ready', headSha: undefined, detached: false, bisecting: false };
+    return {
+      kind: 'ready',
+      headSha: undefined,
+      detached: false,
+      bisecting: false,
+    };
   }
 }
 
@@ -1308,12 +1339,132 @@ function handleRepositoryFailure(result: TargetRepositoryResult): void {
 
 function setState(next: ExtensionState | ((prev: ExtensionState) => ExtensionState)): void {
   if (!runtime) return;
+  const previous = currentState;
   const resolved =
     typeof next === 'function'
       ? (next as (p: ExtensionState) => ExtensionState)(currentState)
       : next;
   currentState = resolved;
   renderStatusBar(resolved);
+  syncMcpStateOnChange(previous, resolved);
+}
+
+function isMcpEnabled(): boolean {
+  // Defaults to on (matches the package.json default); the fallback only
+  // applies if the setting is somehow absent from the registry.
+  return vscode.workspace
+    .getConfiguration(CONFIG_NAMESPACE)
+    .get<boolean>(MCP_ENABLED_SETTING, true);
+}
+
+/**
+ * Monotonic token guarding the async state-file writes against reordering.
+ * A slow `listChangedFilesOnBase` from an earlier change must not overwrite
+ * a snapshot produced by a newer one; each write checks it still holds the
+ * latest token before touching disk. Same "newest wins" guard as the
+ * decoration paint path.
+ */
+let mcpSyncSeq = 0;
+
+/**
+ * The base-relevant fingerprint of a state. The MCP snapshot only depends
+ * on these fields, so an unrelated state change (e.g. a status-bar repaint)
+ * does not trigger a rewrite.
+ */
+function mcpStateSignature(state: ExtensionState): string {
+  if (state.kind !== 'live') return state.kind;
+  const c = state.context;
+  // Structural fingerprint of the base-relevant fields. JSON keeps the
+  // field boundaries unambiguous without a hand-picked separator.
+  return JSON.stringify([
+    c.repository.rootPath,
+    c.baseBranch ?? '',
+    c.mergeBaseSha ?? '',
+    c.baseTipSha ?? '',
+  ]);
+}
+
+/**
+ * Refresh the MCP state file when the base endpoints settle on a new value.
+ * Fire-and-forget: the file is a side channel and never sits on the UI path.
+ */
+function syncMcpStateOnChange(previous: ExtensionState, next: ExtensionState): void {
+  if (!isMcpEnabled()) return;
+  if (mcpStateSignature(previous) === mcpStateSignature(next)) return;
+  const seq = ++mcpSyncSeq;
+  void runMcpStateSync(next, seq).catch((err) => {
+    runtime?.logChannel.warn(`MCP state sync failed: ${stringifyError(err)}`);
+  });
+}
+
+/**
+ * Apply the integration's enabled/disabled setting immediately: write the
+ * current snapshot when turned on, remove it when turned off so a stale
+ * file is never served. Bumping the token first invalidates any in-flight
+ * write so a delete cannot be undone by a late writer (and vice versa).
+ */
+function syncMcpStateNow(): void {
+  if (currentState.kind !== 'live') return;
+  const repoRoot = currentState.context.repository.rootPath;
+  const seq = ++mcpSyncSeq;
+  if (!isMcpEnabled()) {
+    void deleteConflictLensState(repoRoot).catch((err) => {
+      runtime?.logChannel.warn(`MCP state delete failed: ${stringifyError(err)}`);
+    });
+    return;
+  }
+  void runMcpStateSync(currentState, seq).catch((err) => {
+    runtime?.logChannel.warn(`MCP state sync failed: ${stringifyError(err)}`);
+  });
+}
+
+async function runMcpStateSync(state: ExtensionState, seq: number): Promise<void> {
+  if (state.kind !== 'live') return;
+  const ctx = state.context;
+  const repoRoot = ctx.repository.rootPath;
+  const remoteName = readConfiguredRemoteName(ctx.repository.handle.rootUri);
+  // Base not (yet) fully resolved: record an explicit "unresolved" snapshot
+  // so the reader answers "cannot determine" instead of serving a stale
+  // conflict set.
+  if (!ctx.baseBranch || !ctx.mergeBaseSha || !ctx.baseTipSha) {
+    await writeMcpStateIfLatest(seq, {
+      schemaVersion: STATE_SCHEMA_VERSION,
+      repoRoot,
+      baseBranch: ctx.baseBranch ?? null,
+      baseTipSha: null,
+      mergeBaseSha: null,
+      changedFiles: [],
+      remoteName,
+      generatedAt: new Date().toISOString(),
+    });
+    return;
+  }
+  let changedFiles: string[];
+  try {
+    changedFiles = await listChangedFilesOnBase(ctx.environment.runner, repoRoot, ctx.baseBranch);
+  } catch (err) {
+    // A failure is not "no files" (see changed-files.ts): keep the previous
+    // snapshot rather than write a falsely-empty (looks-safe) list.
+    runtime?.logChannel.warn(
+      `MCP state sync: listChangedFilesOnBase failed: ${stringifyError(err)}`,
+    );
+    return;
+  }
+  await writeMcpStateIfLatest(seq, {
+    schemaVersion: STATE_SCHEMA_VERSION,
+    repoRoot,
+    baseBranch: ctx.baseBranch,
+    baseTipSha: ctx.baseTipSha,
+    mergeBaseSha: ctx.mergeBaseSha,
+    changedFiles,
+    remoteName,
+    generatedAt: new Date().toISOString(),
+  });
+}
+
+async function writeMcpStateIfLatest(seq: number, state: ConflictLensState): Promise<void> {
+  if (seq !== mcpSyncSeq) return; // a newer change superseded this write
+  await writeConflictLensState(state);
 }
 
 function renderStatusBar(state: ExtensionState): void {
@@ -1424,7 +1575,32 @@ function registerCommands(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('conflictLens.showChangedFiles', showChangedFilesCommand),
     vscode.commands.registerCommand('conflictLens.showBaseChanges', showBaseChangesCommand),
     vscode.commands.registerCommand('conflictLens.previewConflict', previewConflictCommand),
+    vscode.commands.registerCommand('conflictLens.copyMcpRegistration', () =>
+      copyMcpRegistrationCommand(context),
+    ),
   );
+}
+
+/**
+ * Copy the one-off shell command that registers the bundled stdio MCP
+ * server with Claude Code. The server path points at `dist/mcp-server.js`
+ * inside this installed extension; quoting guards paths that contain
+ * spaces.
+ */
+async function copyMcpRegistrationCommand(context: vscode.ExtensionContext): Promise<void> {
+  const serverPath = vscode.Uri.joinPath(context.extensionUri, 'dist', 'mcp-server.js').fsPath;
+  const registration = `claude mcp add conflict-lens -- node "${serverPath}"`;
+  await vscode.env.clipboard.writeText(registration);
+  const message = isMcpEnabled()
+    ? t(
+        '{0}: registration command copied. Paste it in your terminal to register with Claude Code.',
+        EXTENSION_NAME,
+      )
+    : t(
+        '{0}: registration command copied. Turn on conflictLens.mcp.enabled so the server can answer.',
+        EXTENSION_NAME,
+      );
+  void vscode.window.showInformationMessage(message);
 }
 
 /**

@@ -117,6 +117,19 @@ How to open:
 
 `Conflict Lens: Toggle` switches the highlighting on and off.
 
+### Working with AI agents
+
+Conflict Lens can hand its highlight information to an AI agent through an MCP server.
+
+For Claude Code:
+
+1. Run `Conflict Lens: Copy Claude Code MCP Registration Command` from the Command Palette. The registration command is copied to your clipboard.
+2. Paste it into your terminal and run it.
+
+To use another tool, add an MCP server to it and set its launch command to `node <extension path>/dist/mcp-server.js`.
+
+> Any MCP client should work, but only Claude Code has been verified.
+
 ## Configuration Reference
 
 | Key | Default | Range | Description |
@@ -126,6 +139,7 @@ How to open:
 | `conflictLens.showOverviewRuler` | `true` | bool | Show highlight positions on the scrollbar |
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Show badges in the Explorer |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | Interval for checking remote updates (minutes). `0` to disable |
+| `conflictLens.mcp.enabled` | `true` | bool | Enable integration with AI agents |
 
 You can override the highlight colors in `workbench.colorCustomizations` in your VS Code `settings.json`. The available keys are:
 
@@ -144,6 +158,7 @@ You can override the highlight colors in `workbench.colorCustomizations` in your
 | `Conflict Lens: Show Base Branch Changes` | Show the diff between the current file and the base branch |
 | `Conflict Lens: Preview Conflict` | Show the expected conflict in a read-only preview |
 | `Conflict Lens: Show Output Channel` | Show the logs |
+| `Conflict Lens: Copy Claude Code MCP Registration Command` | Copy the command that registers MCP with Claude Code |
 
 
 ## Troubleshooting
