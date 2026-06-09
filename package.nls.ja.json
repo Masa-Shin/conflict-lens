@@ -11,6 +11,7 @@
   "conflictLens.command.showBaseChanges.title": "ベースブランチとの差分を表示",
   "conflictLens.command.previewConflict.title": "コンフリクトをプレビュー",
   "conflictLens.command.showOutputChannel.title": "ログを表示",
+  "conflictLens.command.copyMcpRegistration.title": "Claude Code 連携の登録コマンドをコピー",
   "conflictLens.command.category": "Conflict Lens",
 
   "conflictLens.config.enabled.description": "Conflict Lens の有効/無効を切り替えます。",
@@ -18,6 +19,7 @@
   "conflictLens.config.showOverviewRuler.description": "エディター右端のスクロールバーにマーカーを表示します。",
   "conflictLens.config.showFileDecorationBadges.description": "ベースブランチで変更されたファイル名にバッジを表示します。",
   "conflictLens.config.remoteCheckIntervalMinutes.description": "git ls-remote でリモートの更新を確認する間隔（分）。0 で無効になります。",
+  "conflictLens.config.mcp.enabled.description": "コンフリクト状態を AI エージェントが参照できるようにします。既定はオン",
 
   "conflictLens.color.changedLineBackground.description": "ベースブランチで変更された行の背景色。",
 

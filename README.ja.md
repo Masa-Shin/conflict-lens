@@ -117,6 +117,23 @@ code --install-extension Masa-Shin.conflict-lens
 
 `Conflict Lens: Toggle` でハイライトの on/off を切り替えられます。
 
+### AI エージェントと連携する
+
+ハイライト情報を MCP サーバを通じて AI エージェントに渡すことも可能です。
+
+AI駆動開発でコンフリクトを低減させたい場合に有効です。
+
+#### 利用方法
+
+Claude Code の場合:
+
+1. コマンドパレットで `Conflict Lens: Copy Claude Code MCP Registration Command` を実行する。登録用コマンドがクリップボードにコピーされます。
+2. ターミナルに貼り付けて実行する。
+
+Claude Code 以外のツールを使う場合は、そのツールの MCP サーバの起動コマンドに `node <拡張のパス>/dist/mcp-server.js` を指定してください。
+
+※ MCP クライアントなら何でも使えるはずですが、Claude Code以外での動作確認はしていません。
+
 ## 設定リファレンス
 
 | キー | デフォルト | 範囲 | 説明 |
@@ -126,6 +143,7 @@ code --install-extension Masa-Shin.conflict-lens
 | `conflictLens.showOverviewRuler` | `true` | bool | スクロールバーにハイライト位置を表示するか |
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | リモート更新検知の間隔（分）。`0` で無効 |
+| `conflictLens.mcp.enabled` | `true` | bool | AI エージェントと連携可能にする |
 
 ハイライトの色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
 
@@ -144,6 +162,7 @@ code --install-extension Masa-Shin.conflict-lens
 | `Conflict Lens: Show Base Branch Changes` | 現在のファイルとベースブランチの差分を表示 |
 | `Conflict Lens: Preview Conflict` | 予想されるコンフリクトを読み取り専用のプレビューで表示 |
 | `Conflict Lens: Show Output Channel` | ログを表示 |
+| `Conflict Lens: Copy Claude Code MCP Registration Command` | Claude Code にMCPを登録するコマンドをコピー |
 
 
 ## トラブルシューティング
