@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-06-09
+
+### Fixed
+
+- Disabling the extension (`conflictLens.enabled`) now also stops the MCP integration and removes its state file, instead of continuing to write it.
+- Disabling the extension now also stops the remote-base polling and its "moved upstream" prompt, which previously kept running.
+- The MCP state file is now removed when the repository drops out of the live state (not only when the integration is toggled off), so the server stops serving a stale snapshot.
+- `get_base_changes` returns a `stale` status instead of erroring when the recorded base endpoints can no longer be resolved (e.g. after a gc or rebase).
+- Path resolution is now realpath-aware, so a file in a workspace opened through a symbolic link is no longer mistaken for being outside the repository.
+- Filenames containing glob characters (`*`, `?`, `[ ]`) are now matched literally; previously their diffs and highlights could be dropped or attributed to the wrong file (git pathspecs are treated as literal via `GIT_LITERAL_PATHSPECS`).
+- The Claude Code registration command points at a version-independent path (the extension's global storage), so it keeps working after the extension updates instead of needing re-registration.
+- Every MCP tool now reports `generatedAt` (with a staleness note on `get_base_context`), so an agent can tell how fresh the snapshot is and when to re-query.
+- A transient git error on one file no longer drops the whole highlight refresh: each editor is updated independently, so the others still repaint.
+- A file whose merge-base version is very large no longer re-runs git on every keystroke; the oversized base diff is no longer refetched once seen.
+- Conflict Preview normalizes line endings before merging, so a CRLF working copy against LF blobs no longer manufactures spurious conflicts.
+
+### Internal
+
+- The MCP server version is taken from `package.json` at build time rather than a hardcoded constant.
+
 ## [1.0.1] - 2026-06-09
 
 Corrective release to publish the base-context MCP server (`get_base_context`, `list_base_changes`, `get_base_changes`) intended for 1.0.0.

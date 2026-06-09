@@ -13,7 +13,6 @@ export const STATE_SCHEMA_VERSION = 1;
  * The snapshot the extension writes for the Claude Code integration. It
  * carries only cheap, edit-stable data — the conflict line ranges are never
  * stored here; the reader computes those on demand from the same git state.
- * See docs/claude-code-integration.md §4.
  *
  * The base fields are `null` when no base branch is resolved (or its SHAs
  * are not yet known). The reader treats that as "cannot determine" rather

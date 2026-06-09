@@ -65,6 +65,8 @@ export async function getBaseContext(ctx: ToolContext): Promise<unknown> {
     baseTipSha: state.baseTipSha,
     mergeBaseSha: state.mergeBaseSha,
     remoteName: state.remoteName,
+    generatedAt: state.generatedAt,
+    note: 'Snapshot recorded at generatedAt; the base branch or HEAD may have moved since. Re-query before relying on it.',
   };
 }
 
@@ -77,13 +79,18 @@ export async function listBaseChanges(ctx: ToolContext, paths?: string[]): Promi
   if (!found || !isResolved(found.state)) return UNRESOLVED;
   const { state } = found;
   if (!paths || paths.length === 0) {
-    return { status: 'ok', baseBranch: state.baseBranch, files: state.changedFiles };
+    return {
+      status: 'ok',
+      baseBranch: state.baseBranch,
+      files: state.changedFiles,
+      generatedAt: state.generatedAt,
+    };
   }
   const results = paths.map((p) => {
     const rel = toRepoRelativePosix(p, state.repoRoot, ctx.cwd);
     return { path: p, changedOnBase: rel !== null && isChangedOnBase(rel, state.changedFiles) };
   });
-  return { status: 'ok', baseBranch: state.baseBranch, results };
+  return { status: 'ok', baseBranch: state.baseBranch, results, generatedAt: state.generatedAt };
 }
 
 /** Return the base branch's own diff for one file (merge-base → base tip). */
@@ -97,15 +104,36 @@ export async function getBaseChanges(ctx: ToolContext, inputPath: string): Promi
     return { status: 'invalid_path', message: `Path is outside the repository: ${inputPath}` };
   }
   if (!isChangedOnBase(rel, state.changedFiles)) {
-    return { status: 'unchanged', path: rel, baseBranch: state.baseBranch };
+    return {
+      status: 'unchanged',
+      path: rel,
+      baseBranch: state.baseBranch,
+      generatedAt: state.generatedAt,
+    };
   }
-  const result = await getBaseChange(
-    ctx.runner,
-    state.repoRoot,
-    state.mergeBaseSha,
-    state.baseTipSha,
-    rel,
-  );
+  let result;
+  try {
+    result = await getBaseChange(
+      ctx.runner,
+      state.repoRoot,
+      state.mergeBaseSha,
+      state.baseTipSha,
+      rel,
+    );
+  } catch {
+    // The recorded endpoints (merge-base / base tip) no longer resolve —
+    // e.g. after a gc or rebase dropped the commits. Report stale rather
+    // than failing the call.
+    return {
+      status: 'stale',
+      path: rel,
+      baseBranch: state.baseBranch,
+      generatedAt: state.generatedAt,
+      message:
+        'The recorded base endpoints are no longer resolvable (the repository may have been ' +
+        'gc-ed or rebased). Refresh Conflict Lens to update them.',
+    };
+  }
   return {
     status: 'ok',
     path: rel,
@@ -113,5 +141,6 @@ export async function getBaseChanges(ctx: ToolContext, inputPath: string): Promi
     change: result.change,
     diff: result.diff,
     truncated: result.truncated,
+    generatedAt: state.generatedAt,
   };
 }

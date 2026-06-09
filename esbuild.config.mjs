@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs';
+
 import { build, context } from 'esbuild';
+
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 /**
  * Build configuration for the Conflict Lens VSCode extension.
@@ -23,6 +27,7 @@ const commonOptions = {
   target: 'node18',
   format: 'cjs',
   external: ['vscode'],
+  define: { __CONFLICT_LENS_VERSION__: JSON.stringify(version) },
   sourcemap: isProduction ? false : 'linked',
   minify: isProduction,
   logLevel: 'info',

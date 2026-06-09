@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import { normalizeLineEndings } from '../util/text';
 import type { GitRunner } from './runner';
 
 export interface MergeFileResult {
@@ -60,10 +61,13 @@ export async function runMergeFile(
   const basePath = path.join(tmpdir, 'base');
   const theirsPath = path.join(tmpdir, 'theirs');
   try {
+    // Normalize all three to LF first. `git merge-file` compares line by
+    // line, so a CRLF buffer against LF blobs would manufacture conflicts (or
+    // leave stray `\r`) purely from line-ending differences.
     await Promise.all([
-      fs.writeFile(oursPath, oursContent),
-      fs.writeFile(basePath, baseContent),
-      fs.writeFile(theirsPath, theirsContent),
+      fs.writeFile(oursPath, normalizeLineEndings(oursContent)),
+      fs.writeFile(basePath, normalizeLineEndings(baseContent)),
+      fs.writeFile(theirsPath, normalizeLineEndings(theirsContent)),
     ]);
 
     const result = await runner.run(
