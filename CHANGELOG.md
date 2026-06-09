@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-06-09
+
+Corrective release to publish the base-context MCP server (`get_base_context`, `list_base_changes`, `get_base_changes`) intended for 1.0.0.
+
 ## [1.0.0] - 2026-06-09
 
 ### Added

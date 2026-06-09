@@ -2,7 +2,7 @@
   "name": "conflict-lens",
   "displayName": "%conflictLens.displayName%",
   "description": "%conflictLens.description%",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "Masa-Shin",
   "license": "MIT",
   "repository": {
