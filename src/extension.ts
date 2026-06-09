@@ -369,6 +369,11 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       if (enabledChanged || visualsChanged || fileDecorationsChanged) {
         scheduleDecorationRefresh();
       }
+      // Disabling the extension must also stop the remote-check polling (and
+      // re-enabling restarts it); the timer otherwise keeps prompting to fetch.
+      if (enabledChanged) {
+        startOrRestartRemoteCheckTimer();
+      }
       if (event.affectsConfiguration(`${CONFIG_NAMESPACE}.${REMOTE_CHECK_INTERVAL_SETTING}`)) {
         startOrRestartRemoteCheckTimer();
       }
@@ -1046,6 +1051,7 @@ function readRemoteCheckIntervalMinutes(): number {
  * throttle is still active.
  */
 function maybePerformRemoteCheck(): void {
+  if (!isEnabled()) return;
   if (readRemoteCheckIntervalMinutes() <= 0) return;
   // When VS Code's own auto-fetch is on it keeps the base tracking ref
   // fresh, so the ls-remote poll (whose only purpose is to prompt for a
@@ -1071,6 +1077,7 @@ function maybePerformRemoteCheck(): void {
  */
 function startOrRestartRemoteCheckTimer(): void {
   stopRemoteCheckTimer();
+  if (!isEnabled()) return;
   if (currentState.kind !== 'live') return;
   if (!currentState.context.baseBranch) return;
   // Skip the periodic poll entirely when VS Code auto-fetch is on; its
@@ -1410,8 +1417,20 @@ function mcpStateSignature(state: ExtensionState): string {
  * Fire-and-forget: the file is a side channel and never sits on the UI path.
  */
 function syncMcpStateOnChange(previous: ExtensionState, next: ExtensionState): void {
-  if (!isMcpActive()) return;
   if (mcpStateSignature(previous) === mcpStateSignature(next)) return;
+  // Leaving the live state (the repository dropped out, git became
+  // unavailable, etc.) must remove the snapshot, or the MCP server keeps
+  // serving stale data authoritatively. Deletion is unconditional here —
+  // the file may exist from when the integration was last active.
+  if (previous.kind === 'live' && next.kind !== 'live') {
+    const repoRoot = previous.context.repository.rootPath;
+    ++mcpSyncSeq;
+    void deleteConflictLensState(repoRoot).catch((err) => {
+      runtime?.logChannel.warn(`MCP state delete failed: ${stringifyError(err)}`);
+    });
+    return;
+  }
+  if (!isMcpActive()) return;
   const seq = ++mcpSyncSeq;
   void runMcpStateSync(next, seq).catch((err) => {
     runtime?.logChannel.warn(`MCP state sync failed: ${stringifyError(err)}`);

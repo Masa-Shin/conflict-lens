@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Disabling the extension (`conflictLens.enabled`) now also stops the MCP integration and removes its state file, instead of continuing to write it.
+- Disabling the extension now also stops the remote-base polling and its "moved upstream" prompt, which previously kept running.
+- The MCP state file is now removed when the repository drops out of the live state (not only when the integration is toggled off), so the server stops serving a stale snapshot.
 - `get_base_changes` returns a `stale` status instead of erroring when the recorded base endpoints can no longer be resolved (e.g. after a gc or rebase).
 - Path resolution is now realpath-aware, so a file in a workspace opened through a symbolic link is no longer mistaken for being outside the repository.
 - The Claude Code registration command points at a version-independent path (the extension's global storage), so it keeps working after the extension updates instead of needing re-registration.
