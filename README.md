@@ -42,6 +42,7 @@ It periodically checks the remote base branch and highlights any lines that have
 
 By default it runs `git ls-remote` every 5 minutes (or when you focus a file) to check for updates.
 When an update is found, it shows a prompt to update the base branch (clicking OK runs `git fetch` for the base branch only).
+After that fetch, if any of your local changes could conflict with the base branch, a notification reports how many places and which files (nothing is shown when everything merges cleanly).
 
 ![Highlighting changed lines](media/highlight-changed-lines.png)
 
@@ -140,6 +141,7 @@ To use another tool, add an MCP server to it and set its launch command to `node
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Show badges in the Explorer |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | Interval for checking remote updates (minutes). `0` to disable |
 | `conflictLens.mcp.enabled` | `true` | bool | Enable integration with AI agents |
+| `conflictLens.notifyConflictsAfterFetch` | `true` | bool | Whether to notify about conflicting places after fetching from the update notification |
 
 You can override the highlight colors in `workbench.colorCustomizations` in your VS Code `settings.json`. The available keys are:
 

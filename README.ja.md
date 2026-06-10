@@ -42,6 +42,7 @@
 
 デフォルトでは 5 分ごとに（あるいはファイルにフォーカスしたタイミングで）`git ls-remote`を行い更新をチェックします。
 更新があれば、ベースブランチを更新するためのプロンプトを表示します（OK を押すとベースブランチのみ `git fetch`）。
+fetch 後、マージするとコンフリクトする箇所がある場合は、その数と該当ファイルを通知します（なければ通知しません）。
 
 ![変更行のハイライト](media/highlight-changed-lines.png)
 
@@ -144,6 +145,7 @@ Claude Code 以外のツールを使う場合は、そのツールの MCP サー
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | リモート更新検知の間隔（分）。`0` で無効 |
 | `conflictLens.mcp.enabled` | `true` | bool | AI エージェントと連携可能にする |
+| `conflictLens.notifyConflictsAfterFetch` | `true` | bool | ベースブランチ更新通知から fetch をしたあと、コンフリクトしている箇所についての通知を出すかどうか |
 
 ハイライトの色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
 

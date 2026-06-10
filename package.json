@@ -144,6 +144,12 @@
           "default": true,
           "scope": "window",
           "description": "%conflictLens.config.mcp.enabled.description%"
+        },
+        "conflictLens.notifyConflictsAfterFetch": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%conflictLens.config.notifyConflictsAfterFetch.description%"
         }
       }
     },
