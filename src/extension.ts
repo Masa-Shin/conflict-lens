@@ -1180,7 +1180,7 @@ async function handleRemoteBehind(ctx: LiveContext, remoteSha: string): Promise<
   runtime?.logChannel.info(`Remote moved (${remoteSha.slice(0, 8)}); notifying for ${baseBranch}.`);
   const fetchLabel = t('Fetch');
   const choice = await vscode.window.showInformationMessage(
-    t('{0}: {1} has moved upstream.', EXTENSION_NAME, baseBranch),
+    t('{0} has been updated on the remote.', baseBranch),
     fetchLabel,
   );
   if (choice !== fetchLabel) return;

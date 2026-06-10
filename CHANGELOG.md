@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The remote-update notification now reads "<base> has been updated on the remote." — clearer wording, and without the redundant "Conflict Lens" prefix (VS Code already shows the source).
+
 ## [1.1.0] - 2026-06-10
 
 ### Fixed

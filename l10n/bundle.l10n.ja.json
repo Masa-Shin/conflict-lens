@@ -40,7 +40,7 @@
   "{0}: failed to generate the conflict view.": "{0}: コンフリクト表示の生成に失敗しました。",
   "{0}: no conflicts detected in {1}.": "{0}: {1} にコンフリクトは検出されませんでした。",
   "Select a file to open": "開くファイルを選択してください",
-  "{0}: {1} has moved upstream.": "{0}: {1} がリモートで更新されています。",
+  "{0} has been updated on the remote.": "{0} がリモートで更新されています。",
   "Fetch": "Fetch",
   "{0}: failed to fetch {1}. See output channel; you may need to run \"git fetch\" manually.": "{0}: {1} の fetch に失敗しました。ログを確認してください。手動で \"git fetch\" が必要な場合があります。",
   "{0}: cannot fetch on this VS Code version. Please run \"git fetch\" manually.": "{0}: このバージョンの VS Code では fetch できません。手動で \"git fetch\" を実行してください。",
