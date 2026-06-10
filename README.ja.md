@@ -42,6 +42,7 @@
 
 デフォルトでは 5 分ごとに（あるいはファイルにフォーカスしたタイミングで）`git ls-remote`を行い更新をチェックします。
 更新があれば、ベースブランチを更新するためのプロンプトを表示します（OK を押すとベースブランチのみ `git fetch`）。
+fetch 後、マージするとコンフリクトする箇所がある場合は、その数と該当ファイルを通知します（なければ通知しません）。
 
 ![変更行のハイライト](media/highlight-changed-lines.png)
 
@@ -92,6 +93,10 @@ code --install-extension Masa-Shin.conflict-lens
 ### 変更されたファイル一覧を見る
 
 `Conflict Lens: Show Changed Files` を実行すると、ベースブランチで変更されたファイルが画面上部に一覧表示され、選択するとそのファイルが開きます。
+
+### コンフリクトするファイル一覧を見る
+
+`Conflict Lens: Show Conflict Files` を実行すると、いまベースブランチをマージした場合にコンフリクトするファイルが、ファイルごとの箇所数つきで一覧表示されます（箇所数の多い順）。選択するとそのファイルが開きます。
 
 ### 差分エディタで詳細を見る
 
@@ -144,6 +149,7 @@ Claude Code 以外のツールを使う場合は、そのツールの MCP サー
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Explorer 上にバッジを表示するか |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | リモート更新検知の間隔（分）。`0` で無効 |
 | `conflictLens.mcp.enabled` | `true` | bool | AI エージェントと連携可能にする |
+| `conflictLens.notifyConflictsAfterFetch` | `true` | bool | ベースブランチ更新通知から fetch をしたあと、コンフリクトしている箇所についての通知を出すかどうか |
 
 ハイライトの色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
 
@@ -159,6 +165,7 @@ Claude Code 以外のツールを使う場合は、そのツールの MCP サー
 | `Conflict Lens: Refresh` | キャッシュを破棄して再計算 |
 | `Conflict Lens: Select Base Branch` | ベースブランチを選択 |
 | `Conflict Lens: Show Changed Files` | 変更されたファイル一覧 |
+| `Conflict Lens: Show Conflict Files` | ベースブランチとコンフリクトするファイル一覧 |
 | `Conflict Lens: Show Base Branch Changes` | 現在のファイルとベースブランチの差分を表示 |
 | `Conflict Lens: Preview Conflict` | 予想されるコンフリクトを読み取り専用のプレビューで表示 |
 | `Conflict Lens: Show Output Channel` | ログを表示 |

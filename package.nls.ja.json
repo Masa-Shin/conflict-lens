@@ -8,6 +8,7 @@
   "conflictLens.command.selectBaseBranch.title": "ベースブランチを選択",
   "conflictLens.command.refresh.title": "再計算する",
   "conflictLens.command.showChangedFiles.title": "変更されたファイル一覧を表示",
+  "conflictLens.command.showConflictFiles.title": "コンフリクトするファイル一覧を表示",
   "conflictLens.command.showBaseChanges.title": "ベースブランチとの差分を表示",
   "conflictLens.command.previewConflict.title": "コンフリクトをプレビュー",
   "conflictLens.command.showOutputChannel.title": "ログを表示",
@@ -20,6 +21,7 @@
   "conflictLens.config.showFileDecorationBadges.description": "ベースブランチで変更されたファイル名にバッジを表示します。",
   "conflictLens.config.remoteCheckIntervalMinutes.description": "git ls-remote でリモートの更新を確認する間隔（分）。0 で無効になります。",
   "conflictLens.config.mcp.enabled.description": "コンフリクト状態を AI エージェントが参照できるようにします。既定はオン",
+  "conflictLens.config.notifyConflictsAfterFetch.description": "ベースブランチ更新通知から fetch をしたあと、コンフリクトしている箇所についての通知を出すかどうか",
 
   "conflictLens.color.changedLineBackground.description": "ベースブランチで変更された行の背景色。",
 

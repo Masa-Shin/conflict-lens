@@ -60,5 +60,13 @@
   "not in the current branch": "現在のブランチに存在しません",
   "{0}: {1} does not exist in the current branch.": "{0}: {1} は現在のブランチに存在しません。",
   "{0}: registration command copied. Paste it in your terminal to register with Claude Code.": "{0}: 登録コマンドをコピーしました。ターミナルに貼り付けると Claude Code に MCP サーバを登録できます。",
-  "{0}: registration command copied. Turn on conflictLens.mcp.enabled so the server can answer.": "{0}: 登録コマンドをコピーしました。動作させるには conflictLens.mcp.enabled を有効にしてください。"
+  "{0}: registration command copied. Turn on conflictLens.mcp.enabled so the server can answer.": "{0}: 登録コマンドをコピーしました。動作させるには conflictLens.mcp.enabled を有効にしてください。",
+  "{0} place(s) may conflict with the base branch.": "マージするとコンフリクトする箇所が {0} 箇所あります。",
+  "and {0} more file(s)": "ほか {0} ファイル",
+  "Checking for conflicts…": "コンフリクトを確認しています…",
+  "{0}: failed to scan for conflicts.": "{0}: コンフリクトの確認に失敗しました。",
+  "{0}: nothing conflicts with {1}.": "{0}: {1} とコンフリクトする可能性のある箇所はありません。",
+  "Files that may conflict with {0}": "{0} とコンフリクトする可能性のあるファイル",
+  "Show Files": "ファイルを表示",
+  "{0} place(s)": "{0} 箇所"
 }

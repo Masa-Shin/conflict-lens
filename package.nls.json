@@ -8,6 +8,7 @@
   "conflictLens.command.selectBaseBranch.title": "Select Base Branch",
   "conflictLens.command.refresh.title": "Refresh",
   "conflictLens.command.showChangedFiles.title": "Show Changed Files",
+  "conflictLens.command.showConflictFiles.title": "Show Conflict Files",
   "conflictLens.command.showBaseChanges.title": "Show Base Branch Changes",
   "conflictLens.command.previewConflict.title": "Preview Conflict",
   "conflictLens.command.showOutputChannel.title": "Show Output Channel",
@@ -20,6 +21,7 @@
   "conflictLens.config.showFileDecorationBadges.description": "Show badges on file names that the base branch has changed.",
   "conflictLens.config.remoteCheckIntervalMinutes.description": "Interval in minutes for polling remote updates with git ls-remote. Set to 0 to disable.",
   "conflictLens.config.mcp.enabled.description": "Let an AI agent read the conflict state. On by default.",
+  "conflictLens.config.notifyConflictsAfterFetch.description": "Whether to notify about conflicting places after fetching the base branch from the update notification.",
 
   "conflictLens.color.changedLineBackground.description": "Background color for lines changed on the base branch.",
 

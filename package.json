@@ -83,6 +83,11 @@
         "category": "%conflictLens.command.category%"
       },
       {
+        "command": "conflictLens.showConflictFiles",
+        "title": "%conflictLens.command.showConflictFiles.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
         "command": "conflictLens.showBaseChanges",
         "title": "%conflictLens.command.showBaseChanges.title%",
         "category": "%conflictLens.command.category%"
@@ -144,6 +149,12 @@
           "default": true,
           "scope": "window",
           "description": "%conflictLens.config.mcp.enabled.description%"
+        },
+        "conflictLens.notifyConflictsAfterFetch": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%conflictLens.config.notifyConflictsAfterFetch.description%"
         }
       }
     },

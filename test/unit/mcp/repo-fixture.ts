@@ -76,6 +76,16 @@ export function setupScenario(options: ScenarioOptions): Scenario {
     baseBranch: 'main',
     mergeBaseSha,
     baseTipSha,
-    cleanup: () => fs.rmSync(repo, { recursive: true, force: true }),
+    cleanup: () => {
+      // On Windows a just-disposed `git cat-file --batch` child (cwd = this
+      // repo) can still hold the directory for a moment, failing rmdir with
+      // EBUSY. Retry briefly, then settle for best effort like the other
+      // git-backed suites — the OS temp dir is reclaimed eventually anyway.
+      try {
+        fs.rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      } catch {
+        // best effort
+      }
+    },
   };
 }

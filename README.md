@@ -42,6 +42,7 @@ It periodically checks the remote base branch and highlights any lines that have
 
 By default it runs `git ls-remote` every 5 minutes (or when you focus a file) to check for updates.
 When an update is found, it shows a prompt to update the base branch (clicking OK runs `git fetch` for the base branch only).
+After that fetch, if any of your local changes could conflict with the base branch, a notification reports how many places and which files (nothing is shown when everything merges cleanly).
 
 ![Highlighting changed lines](media/highlight-changed-lines.png)
 
@@ -93,6 +94,10 @@ If none is found, it shows `(no base)` and the features are disabled.
 
 Running `Conflict Lens: Show Changed Files` lists the files changed on the base branch at the top of the screen; selecting one opens that file.
 
+### Listing files that may conflict
+
+Running `Conflict Lens: Show Conflict Files` lists the files that would conflict if the base branch were merged now, with the number of conflicting places per file (most conflicts first); selecting one opens that file.
+
 ### Viewing details in the diff editor
 
 Compare the current content on the base branch with your local content side by side.
@@ -140,6 +145,7 @@ To use another tool, add an MCP server to it and set its launch command to `node
 | `conflictLens.showFileDecorationBadges` | `true` | bool | Show badges in the Explorer |
 | `conflictLens.remoteCheckIntervalMinutes` | `5` | 0-1440 | Interval for checking remote updates (minutes). `0` to disable |
 | `conflictLens.mcp.enabled` | `true` | bool | Enable integration with AI agents |
+| `conflictLens.notifyConflictsAfterFetch` | `true` | bool | Whether to notify about conflicting places after fetching from the update notification |
 
 You can override the highlight colors in `workbench.colorCustomizations` in your VS Code `settings.json`. The available keys are:
 
@@ -155,6 +161,7 @@ You can override the highlight colors in `workbench.colorCustomizations` in your
 | `Conflict Lens: Refresh` | Discard the cache and recompute |
 | `Conflict Lens: Select Base Branch` | Select the base branch |
 | `Conflict Lens: Show Changed Files` | List of changed files |
+| `Conflict Lens: Show Conflict Files` | List the files that would conflict with the base branch |
 | `Conflict Lens: Show Base Branch Changes` | Show the diff between the current file and the base branch |
 | `Conflict Lens: Preview Conflict` | Show the expected conflict in a read-only preview |
 | `Conflict Lens: Show Output Channel` | Show the logs |

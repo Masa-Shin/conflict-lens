@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- After fetching the base branch from the update notification, a notification now reports how many places may conflict with your local changes, listing up to three affected files (plus an "and n more" line when there are more). Nothing is shown when everything merges cleanly. Controlled by `conflictLens.notifyConflictsAfterFetch` (on by default).
+- `Conflict Lens: Show Conflict Files` — list the files that would conflict if the base branch were merged now, with the number of conflicting places per file; selecting one opens it.
+
 ### Changed
 
 - The remote-update notification now reads "<base> has been updated on the remote." — clearer wording, and without the redundant "Conflict Lens" prefix (VS Code already shows the source).
