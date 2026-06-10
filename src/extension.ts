@@ -1246,9 +1246,12 @@ async function maybeNotifyPostFetchConflicts(baseBranch: string): Promise<void> 
     // an explicit separator is the only way to keep the list readable.
     const parts = [...top];
     if (rest > 0) parts.push(t('and {0} more file(s)', rest));
-    void vscode.window.showWarningMessage(
+    const showLabel = t('Show Files');
+    const choice = await vscode.window.showWarningMessage(
       `${t('{0} place(s) may conflict with the base branch.', result.totalConflicts)} ${parts.join(', ')}`,
+      showLabel,
     );
+    if (choice === showLabel) await showConflictFilesCommand();
   } catch (err) {
     log?.warn(`Post-fetch conflict scan failed: ${stringifyError(err)}`);
   }
@@ -1692,6 +1695,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('conflictLens.toggle', toggleEnabledCommand),
     vscode.commands.registerCommand('conflictLens.refresh', refreshCommand),
     vscode.commands.registerCommand('conflictLens.showChangedFiles', showChangedFilesCommand),
+    vscode.commands.registerCommand('conflictLens.showConflictFiles', showConflictFilesCommand),
     vscode.commands.registerCommand('conflictLens.showBaseChanges', showBaseChangesCommand),
     vscode.commands.registerCommand('conflictLens.previewConflict', previewConflictCommand),
     vscode.commands.registerCommand('conflictLens.copyMcpRegistration', () =>
@@ -1868,6 +1872,105 @@ async function showChangedFilesCommand(): Promise<void> {
   }));
   const picked = await vscode.window.showQuickPick(items, {
     title: `${EXTENSION_NAME}: ${baseBranch}`,
+    placeHolder: t('Select a file to open'),
+  });
+  if (!picked) return;
+
+  if (!picked.existsLocally) {
+    void vscode.window.showInformationMessage(
+      t('{0}: {1} does not exist in the current branch.', EXTENSION_NAME, picked.relativeFilePath),
+    );
+    return;
+  }
+
+  try {
+    const uri = vscode.Uri.file(path.join(repoRoot, picked.relativeFilePath));
+    await vscode.window.showTextDocument(uri);
+  } catch (err) {
+    runtime?.logChannel.warn(`showTextDocument failed: ${stringifyError(err)}`);
+  }
+}
+
+/**
+ * List the files that would conflict when the base branch is merged into the
+ * working tree (same scan as the post-fetch notification), most conflicting
+ * first; picking one opens it. Files we deleted locally cannot be opened and
+ * say so instead.
+ */
+async function showConflictFilesCommand(): Promise<void> {
+  if (currentState.kind !== 'live') {
+    void vscode.window.showInformationMessage(
+      t('{0}: not available in this workspace.', EXTENSION_NAME),
+    );
+    return;
+  }
+  const ctx = currentState.context;
+  const baseBranch = ctx.baseBranch;
+  if (!baseBranch) {
+    void vscode.window.showInformationMessage(t('{0}: no base branch selected.', EXTENSION_NAME));
+    return;
+  }
+  const { mergeBaseSha, baseTipSha } = ctx;
+  if (!mergeBaseSha || !baseTipSha) {
+    void vscode.window.showInformationMessage(
+      t('{0}: cannot determine merge-base with {1}.', EXTENSION_NAME, baseBranch),
+    );
+    return;
+  }
+
+  const runner = ctx.environment.runner;
+  const repoRoot = ctx.repository.rootPath;
+  let result;
+  try {
+    result = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title: t('Checking for conflicts…') },
+      async () => {
+        const changedFiles = await listChangedFilesOnBase(runner, repoRoot, baseBranch);
+        return scanBaseConflicts({
+          runner,
+          repoRootPath: repoRoot,
+          mergeBaseSha,
+          baseTipSha,
+          changedFiles,
+          readBlob: ctx.readBlob,
+        });
+      },
+    );
+  } catch (err) {
+    runtime?.logChannel.warn(`showConflictFiles failed: ${stringifyError(err)}`);
+    void vscode.window.showWarningMessage(t('{0}: failed to scan for conflicts.', EXTENSION_NAME));
+    return;
+  }
+  if (result.skipped.length > 0) {
+    runtime?.logChannel.debug(`Conflict scan skipped: ${result.skipped.join(', ')}`);
+  }
+  if (result.totalConflicts === 0) {
+    void vscode.window.showInformationMessage(
+      t('{0}: nothing conflicts with {1}.', EXTENSION_NAME, baseBranch),
+    );
+    return;
+  }
+
+  // Keep the scan's order (most conflicts first). A conflicting file can be
+  // missing locally (we deleted it; the base modified it) — flag it and tell
+  // the user when picked, like Show Changed Files does.
+  const presence = await Promise.all(
+    result.files.map((f) => fileExists(path.join(repoRoot, f.path))),
+  );
+  interface ConflictFileItem extends vscode.QuickPickItem {
+    readonly relativeFilePath: string;
+    readonly existsLocally: boolean;
+  }
+  const items: ConflictFileItem[] = result.files.map((f, i) => ({
+    label: f.path,
+    relativeFilePath: f.path,
+    existsLocally: presence[i],
+    description: presence[i]
+      ? t('{0} place(s)', f.conflicts)
+      : `${t('{0} place(s)', f.conflicts)} · ${t('not in the current branch')}`,
+  }));
+  const picked = await vscode.window.showQuickPick(items, {
+    title: t('Files that may conflict with {0}', baseBranch),
     placeHolder: t('Select a file to open'),
   });
   if (!picked) return;

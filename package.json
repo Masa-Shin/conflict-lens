@@ -83,6 +83,11 @@
         "category": "%conflictLens.command.category%"
       },
       {
+        "command": "conflictLens.showConflictFiles",
+        "title": "%conflictLens.command.showConflictFiles.title%",
+        "category": "%conflictLens.command.category%"
+      },
+      {
         "command": "conflictLens.showBaseChanges",
         "title": "%conflictLens.command.showBaseChanges.title%",
         "category": "%conflictLens.command.category%"

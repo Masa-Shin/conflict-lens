@@ -8,6 +8,7 @@
   "conflictLens.command.selectBaseBranch.title": "ベースブランチを選択",
   "conflictLens.command.refresh.title": "再計算する",
   "conflictLens.command.showChangedFiles.title": "変更されたファイル一覧を表示",
+  "conflictLens.command.showConflictFiles.title": "コンフリクトするファイル一覧を表示",
   "conflictLens.command.showBaseChanges.title": "ベースブランチとの差分を表示",
   "conflictLens.command.previewConflict.title": "コンフリクトをプレビュー",
   "conflictLens.command.showOutputChannel.title": "ログを表示",

@@ -94,6 +94,10 @@ code --install-extension Masa-Shin.conflict-lens
 
 `Conflict Lens: Show Changed Files` を実行すると、ベースブランチで変更されたファイルが画面上部に一覧表示され、選択するとそのファイルが開きます。
 
+### コンフリクトするファイル一覧を見る
+
+`Conflict Lens: Show Conflict Files` を実行すると、いまベースブランチをマージした場合にコンフリクトするファイルが、ファイルごとの箇所数つきで一覧表示されます（箇所数の多い順）。選択するとそのファイルが開きます。
+
 ### 差分エディタで詳細を見る
 
 ベースブランチでの現在の内容と、自分のローカルの内容を左右に並べて比較できます。
@@ -161,6 +165,7 @@ Claude Code 以外のツールを使う場合は、そのツールの MCP サー
 | `Conflict Lens: Refresh` | キャッシュを破棄して再計算 |
 | `Conflict Lens: Select Base Branch` | ベースブランチを選択 |
 | `Conflict Lens: Show Changed Files` | 変更されたファイル一覧 |
+| `Conflict Lens: Show Conflict Files` | ベースブランチとコンフリクトするファイル一覧 |
 | `Conflict Lens: Show Base Branch Changes` | 現在のファイルとベースブランチの差分を表示 |
 | `Conflict Lens: Preview Conflict` | 予想されるコンフリクトを読み取り専用のプレビューで表示 |
 | `Conflict Lens: Show Output Channel` | ログを表示 |
