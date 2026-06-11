@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-06-11
+
+### Changed
+
+- The default highlight color is now a softer orange (previously yellow), so it no longer blends with the yellow "modified line" gutter bars some themes use for Git changes. Override via `conflictLens.changedLineBackground` in `workbench.colorCustomizations` as before.
+
+### Fixed
+
+- The Japanese hover and badge text now attributes the change to the base branch (「{0} 側で変更されています」); the previous wording read as if the local file had been edited.
+
 ## [1.2.0] - 2026-06-10
 
 ### Added
