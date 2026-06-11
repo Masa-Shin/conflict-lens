@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-06-11
+
+### Changed
+
+- The conflict notification now fires whenever the local base branch is updated — including VS Code auto-fetch and a manual `git fetch` — instead of only after fetching from the update notification. Same `conflictLens.notifyConflictsAfterFetch` setting.
+
 ## [1.2.1] - 2026-06-11
 
 ### Changed

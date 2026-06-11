@@ -80,9 +80,10 @@ const REMOTE_CHECK_INTERVAL_SETTING = 'remoteCheckIntervalMinutes';
  */
 const MCP_ENABLED_SETTING = 'mcp.enabled';
 /**
- * Toggle for the post-fetch conflict notification. On by default: after the
- * user fetches the base branch from the update toast, a scan counts the
- * places that would conflict with the working tree and reports them.
+ * Toggle for the conflict notification. On by default: whenever the local
+ * copy of the base branch is updated (toast Fetch, VS Code auto-fetch, or a
+ * manual `git fetch`), a scan counts the places that would conflict with
+ * the working tree and reports them.
  */
 const NOTIFY_CONFLICTS_SETTING = 'notifyConflictsAfterFetch';
 /**
@@ -479,6 +480,18 @@ async function refreshMergeBase(): Promise<void> {
   // base-diff was computed against now-stale endpoints. Drop them so the
   // next refresh recomputes from the new positions.
   runtime?.weakDecorations.invalidateAll();
+  // The tip moved from one known commit to another: the base branch was
+  // updated (toast Fetch, VS Code auto-fetch, or a manual `git fetch` —
+  // they all land here). That is the moment conflict risk changes, so this
+  // is where the conflict notification hangs. A first resolution (previous
+  // tip unknown) is startup or a base switch, not an update — stay silent.
+  if (
+    after.baseTipSha !== undefined &&
+    baseTipSha !== undefined &&
+    after.baseTipSha !== baseTipSha
+  ) {
+    void maybeNotifyBaseConflicts(resolvedFor);
+  }
 }
 
 async function refreshBaseBranch(): Promise<void> {
@@ -1195,31 +1208,42 @@ async function handleRemoteBehind(ctx: LiveContext, remoteSha: string): Promise<
   if (ok) {
     lastNotifiedRemoteSha = undefined;
     // The base tip just moved, so the merge-base might have shifted and
-    // every cached base-diff is now potentially stale.
+    // every cached base-diff is now potentially stale. refreshMergeBase
+    // also fires the conflict notification when it sees the tip move.
     runtime?.weakDecorations.invalidateAll();
     await refreshMergeBase();
     scheduleDecorationRefresh();
-    await maybeNotifyPostFetchConflicts(baseBranch);
   }
 }
 
 /**
- * After a successful base fetch, count the places where merging the freshly
- * fetched base would conflict with the working tree, and notify when there
- * are any. Silent when everything merges cleanly, when the scan fails, or
- * when `conflictLens.notifyConflictsAfterFetch` is off. Reads the new base
+ * Base tip the conflict notification last ran for. Keeps event storms (and
+ * a fetch arriving via several change events) from scanning or notifying
+ * twice for the same update.
+ */
+let lastConflictScanTipSha: string | undefined;
+
+/**
+ * When the local copy of the base branch is updated — no matter how: the
+ * toast's Fetch button, VS Code auto-fetch, or a manual `git fetch` — count
+ * the places where merging the new base would conflict with the working
+ * tree, and notify when there are any. Silent when everything merges
+ * cleanly, when the scan fails, or when
+ * `conflictLens.notifyConflictsAfterFetch` is off. Reads the new base
  * endpoints from `currentState` (refreshMergeBase has just resolved them).
  */
-async function maybeNotifyPostFetchConflicts(baseBranch: string): Promise<void> {
+async function maybeNotifyBaseConflicts(baseBranch: string): Promise<void> {
   const enabled = vscode.workspace
     .getConfiguration(CONFIG_NAMESPACE)
     .get<boolean>(NOTIFY_CONFLICTS_SETTING, true);
   if (!enabled) return;
   if (currentState.kind !== 'live') return;
   const ctx = currentState.context;
-  // The base may have been switched while the fetch ran; a scan against a
-  // different base would answer a question nobody asked.
+  // The base may have been switched while the update landed; a scan against
+  // a different base would answer a question nobody asked.
   if (ctx.baseBranch !== baseBranch || !ctx.mergeBaseSha || !ctx.baseTipSha) return;
+  if (lastConflictScanTipSha === ctx.baseTipSha) return;
+  lastConflictScanTipSha = ctx.baseTipSha;
   const log = runtime?.logChannel;
   try {
     const changedFiles = await listChangedFilesOnBase(
