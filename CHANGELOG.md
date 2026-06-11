@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The default highlight color is now a softer orange (previously yellow), so it no longer blends with the yellow "modified line" gutter bars some themes use for Git changes. Override via `conflictLens.changedLineBackground` in `workbench.colorCustomizations` as before.
+
 ## [1.2.0] - 2026-06-10
 
 ### Added

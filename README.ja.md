@@ -153,7 +153,7 @@ Claude Code 以外のツールを使う場合は、そのツールの MCP サー
 
 ハイライトの色は、VS Code の `settings.json` の `workbench.colorCustomizations` で上書きできます。設定可能なキーは次の通りです。
 
-- `conflictLens.changedLineBackground` — ベースが変更した行の背景色（デフォルト黄色）
+- `conflictLens.changedLineBackground` — ベースが変更した行の背景色（デフォルトは薄いオレンジ）
 
 ## コマンドリファレンス
 

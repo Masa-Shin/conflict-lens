@@ -149,7 +149,7 @@ To use another tool, add an MCP server to it and set its launch command to `node
 
 You can override the highlight colors in `workbench.colorCustomizations` in your VS Code `settings.json`. The available keys are:
 
-- `conflictLens.changedLineBackground` — background color for lines changed on the base (yellow by default)
+- `conflictLens.changedLineBackground` — background color for lines changed on the base (soft orange by default)
 
 ## Command Reference
 

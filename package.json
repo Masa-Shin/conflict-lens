@@ -163,10 +163,10 @@
         "id": "conflictLens.changedLineBackground",
         "description": "%conflictLens.color.changedLineBackground.description%",
         "defaults": {
-          "dark": "#ffc80030",
-          "light": "#b88a0030",
-          "highContrast": "#ffff0040",
-          "highContrastLight": "#a06800a0"
+          "dark": "#ff9d4520",
+          "light": "#ee6e0816",
+          "highContrast": "#ff9d4540",
+          "highContrastLight": "#c45a0890"
         }
       }
     ],
