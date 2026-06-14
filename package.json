@@ -205,10 +205,10 @@
     "@types/vscode": "^1.74.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.28.1",
     "mocha": "^11.7.6",
-    "oxfmt": "^0.53.0",
-    "oxlint": "^1.68.0",
+    "oxfmt": "^0.54.0",
+    "oxlint": "^1.69.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.8"
   },
