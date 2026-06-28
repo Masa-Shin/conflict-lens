@@ -60,7 +60,7 @@
   "not in the current branch": "not in the current branch",
   "{0}: {1} does not exist in the current branch.": "{0}: {1} does not exist in the current branch.",
   "{0}: registration command copied. Paste it in your terminal to register with Claude Code.": "{0}: registration command copied. Paste it in your terminal to register with Claude Code.",
-  "{0}: registration command copied. Turn on conflictLens.mcp.enabled so the server can answer.": "{0}: registration command copied. Turn on conflictLens.mcp.enabled so the server can answer.",
+  "{0}: registration command copied. Enable both conflictLens.enabled and conflictLens.mcp.enabled so the server can answer.": "{0}: registration command copied. Enable both conflictLens.enabled and conflictLens.mcp.enabled so the server can answer.",
   "{0} place(s) may conflict with the base branch.": "{0} place(s) may conflict with the base branch.",
   "and {0} more file(s)": "and {0} more file(s)",
   "Checking for conflicts…": "Checking for conflicts…",

@@ -74,6 +74,23 @@ describe('getBaseContext', () => {
       fs.rmSync(empty, { recursive: true, force: true });
     }
   });
+
+  it('does not cross into a parent repository for a nested repo without its own state', async () => {
+    // Outer repo has a snapshot; a distinct git repo nested inside it does not.
+    // Querying from the inner repo must report unresolved, not serve the
+    // outer repo's base context against the inner repo's files.
+    const outer = setupScenario({
+      root: { 'foo.txt': FIVE },
+      baseChange: (t) => t.write('foo.txt', 'l1\nl2\nl3-base\nl4\nl5\n'),
+    });
+    await start(outer, ['foo.txt']);
+    const inner = path.join(outer.repo, 'inner');
+    fs.mkdirSync(path.join(inner, '.git'), { recursive: true });
+    const ctx: ToolContext = { cwd: inner, runner };
+    expect((await getBaseContext(ctx)) as { status: string }).toMatchObject({
+      status: 'unresolved',
+    });
+  });
 });
 
 describe('listBaseChanges', () => {
