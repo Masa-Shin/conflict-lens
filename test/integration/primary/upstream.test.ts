@@ -117,4 +117,74 @@ describe('upstream moves', () => {
       git(['checkout', '--', 'upstream.txt'], root);
     }
   });
+
+  it('stays silent during a merge and notifies after the merge is aborted', async () => {
+    const root = workspaceRoot();
+    const originUrl = git(['remote', 'get-url', 'origin'], root).trim();
+    const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], root).trim();
+
+    // Manufacture an in-progress conflicted merge from a throwaway branch:
+    // both sides edit mergeblock.txt, so `git merge` stops with markers and
+    // MERGE_HEAD present.
+    writeFileSync(join(root, 'mergeblock.txt'), 'common\n');
+    git(['add', 'mergeblock.txt'], root);
+    git(['commit', '-m', 'mergeblock base'], root);
+    git(['checkout', '-b', 'noise'], root);
+    writeFileSync(join(root, 'mergeblock.txt'), 'noise side\n');
+    git(['commit', '-am', 'noise side'], root);
+    git(['checkout', branch], root);
+    writeFileSync(join(root, 'mergeblock.txt'), 'our side\n');
+    git(['commit', '-am', 'our side'], root);
+    try {
+      git(['merge', 'noise'], root);
+    } catch {
+      // Expected: the merge conflicts and exits non-zero, leaving MERGE_HEAD.
+    }
+
+    const original = vscode.window.showWarningMessage;
+    let captured: string | undefined;
+    (vscode.window as { showWarningMessage: unknown }).showWarningMessage = async (
+      message: string,
+    ) => {
+      captured = message;
+      return undefined;
+    };
+    const gitApi = vscode.extensions
+      .getExtension<{ getAPI(version: 1): { repositories: { status(): Promise<void> }[] } }>(
+        'vscode.git',
+      )
+      ?.exports.getAPI(1);
+    try {
+      // The base moves while the merge is still in progress.
+      const clone = mkdtempSync(join(tmpdir(), 'conflict-lens-it-clone3-'));
+      git(['clone', originUrl, clone], tmpdir());
+      writeFileSync(join(clone, 'upstream.txt'), 'u\nUPSTREAM-third\nw\n');
+      git(['commit', '-am', 'third upstream change'], clone);
+      git(['push', 'origin', 'HEAD:master'], clone);
+      git(['fetch', 'origin'], root);
+
+      // Mid-merge the notification must stay away. Poll long enough for the
+      // tip-move event to have been processed (it provably arrives within
+      // this window in the test above).
+      const start = Date.now();
+      while (Date.now() - start < 6000) {
+        await gitApi?.repositories[0]?.status();
+        assert.strictEqual(captured, undefined, 'notification fired during an active merge');
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+
+      // Aborting the merge returns the repo to ready; the suppressed check
+      // re-runs and, with the conflicts still in place, now notifies.
+      git(['merge', '--abort'], root);
+      const notified = await waitFor(async () => {
+        await gitApi?.repositories[0]?.status();
+        return captured !== undefined;
+      });
+      assert.ok(notified, 'no conflict notification appeared after aborting the merge');
+      assert.match(captured ?? '', /place\(s\) may conflict with the base branch/);
+    } finally {
+      (vscode.window as { showWarningMessage: unknown }).showWarningMessage = original;
+      git(['branch', '-D', 'noise'], root);
+    }
+  });
 });

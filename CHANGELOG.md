@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-06-28
+
+### Fixed
+
+- The conflict notification no longer appears while a merge, rebase, cherry-pick, or revert is in progress, where the working tree already shows the conflicts. If the base branch was updated mid-operation, the check runs once the operation finishes or is aborted.
+- A file that cannot be read during the conflict scan (for example, one replaced by a directory) is now skipped instead of being counted as a deletion, which could otherwise inflate the reported conflict count.
+- The Claude Code integration no longer answers for a repository nested inside another using the outer repository's data; without its own snapshot it reports that the base cannot be determined.
+
+### Changed
+
+- The registration message for the Claude Code integration now asks you to enable both `conflictLens.enabled` and `conflictLens.mcp.enabled`, since the server can only answer when both are on.
+
 ## [1.2.2] - 2026-06-11
 
 ### Changed

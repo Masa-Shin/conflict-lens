@@ -1,3 +1,4 @@
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import type { GitRunner } from '../git/runner';
@@ -32,9 +33,27 @@ export const UNRESOLVED = {
     'integration may be off (conflictLens.mcp.enabled), or no base branch was detected.',
 } as const;
 
+/** Whether `dir` holds a `.git` entry — a directory for a normal repo, a file
+ * for a linked worktree or submodule. Either marks `dir` as a repository root. */
+async function isRepoRoot(dir: string): Promise<boolean> {
+  try {
+    await fs.access(path.join(dir, '.git'));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Locate the state file by walking up from `cwd`. Re-read on every call so
  * the answer always reflects the latest base endpoints — nothing is cached.
+ *
+ * The walk stops at the first repository root: a `.git` entry means we are at
+ * the root of the repo `cwd` belongs to, and that repo's snapshot (if any)
+ * lives there. Ascending past it would pick up a *parent* repository's
+ * snapshot — for a repo nested in another, or a linked worktree under one —
+ * and answer queries against the wrong repo. No snapshot at the boundary
+ * therefore means "this repo has none", not "keep looking upward".
  */
 export async function findState(
   cwd: string,
@@ -43,6 +62,7 @@ export async function findState(
   for (;;) {
     const state = await readConflictLensState(dir);
     if (state) return { root: dir, state };
+    if (await isRepoRoot(dir)) return null;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;

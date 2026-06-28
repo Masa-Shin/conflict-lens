@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { BlobReader } from '../../../src/git/blob';
@@ -194,5 +196,24 @@ describe('scanBaseConflicts', () => {
     // The text file is still counted despite the binary neighbor.
     expect(result.totalConflicts).toBe(1);
     expect(result.files).toEqual([{ path: 'foo.txt', conflicts: 1 }]);
+  });
+
+  it('skips an unreadable path instead of counting a phantom deletion', async () => {
+    const { scenario, readBlob } = start(
+      setupScenario({
+        root: { 'odd.txt': FIVE },
+        baseChange: (t) => t.write('odd.txt', 'l1\nl2\nl3-base\nl4\nl5\n'),
+        // The tracked file is replaced by a same-named directory, so the
+        // read fails with something other than "does not exist".
+        localChange: (t) => {
+          t.remove('odd.txt');
+          fs.mkdirSync(path.join(t.repo, 'odd.txt'));
+        },
+      }),
+    );
+    const result = await scan(scenario, readBlob, ['odd.txt']);
+    expect(result.skipped).toEqual(['odd.txt']);
+    // Not a modify/delete conflict — we could not read it, that is all.
+    expect(result.totalConflicts).toBe(0);
   });
 });

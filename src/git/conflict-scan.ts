@@ -176,10 +176,19 @@ async function blobOrNull(
   }
 }
 
+/**
+ * Read the working-tree file, with `null` strictly meaning "the file does
+ * not exist" (ENOENT, or ENOTDIR for a vanished parent). Any other failure
+ * (permissions, the path being a directory, I/O errors) propagates so the
+ * per-file catch counts the file as skipped — treating those as "deleted"
+ * would fabricate a modify/delete conflict that does not exist.
+ */
 async function workingFileOrNull(repoRoot: string, relPosix: string): Promise<string | null> {
   try {
     return await fs.readFile(path.join(repoRoot, ...relPosix.split('/')), 'utf8');
-  } catch {
-    return null;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    throw err;
   }
 }

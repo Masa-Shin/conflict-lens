@@ -328,6 +328,7 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
     try {
       const next = await safeDetectGitState(environment, repoResult.repository);
       let stateChanged = false;
+      let cameOutOfBlockingState = false;
       setState((prev) => {
         if (prev.kind !== 'live') return prev;
         if (gitStatesEqual(prev.context.gitState, next)) return prev;
@@ -335,6 +336,8 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
           `Git state changed: ${prev.context.gitState.kind} → ${next.kind}.`,
         );
         stateChanged = true;
+        cameOutOfBlockingState =
+          isStateBlockingHighlights(prev.context.gitState) && !isStateBlockingHighlights(next);
         return { kind: 'live', context: { ...prev.context, gitState: next } };
       });
       if (stateChanged) {
@@ -349,6 +352,19 @@ async function initialize(context: vscode.ExtensionContext): Promise<void> {
       // cost of always calling it is the one `git merge-base` spawn.
       await refreshMergeBase();
       scheduleDecorationRefresh();
+      // Coming out of a merge / rebase / etc.: a base update that landed
+      // during the operation was deliberately not announced (see the gate in
+      // maybeNotifyBaseConflicts). Re-run the check now — after a completed
+      // merge the scan comes back clean and stays silent; after an abort the
+      // conflicts still exist and this is the notification's only chance,
+      // because the tip will not move again to re-trigger it.
+      if (
+        cameOutOfBlockingState &&
+        currentState.kind === 'live' &&
+        currentState.context.baseBranch
+      ) {
+        void maybeNotifyBaseConflicts(currentState.context.baseBranch);
+      }
     } catch (err) {
       runtime?.logChannel.warn(`State re-evaluation failed: ${stringifyError(err)}`);
     }
@@ -1242,8 +1258,16 @@ async function maybeNotifyBaseConflicts(baseBranch: string): Promise<void> {
   // The base may have been switched while the update landed; a scan against
   // a different base would answer a question nobody asked.
   if (ctx.baseBranch !== baseBranch || !ctx.mergeBaseSha || !ctx.baseTipSha) return;
+  // A mid-operation working tree (merge / rebase / cherry-pick / revert) is
+  // full of conflict markers and the user is already looking at the
+  // conflicts — a toast computed from that tree would be noise. Same gate
+  // as the remote check. Skip WITHOUT consuming the dedupe key below: the
+  // ready-transition in reevaluateState re-runs this check, which matters
+  // for an aborted merge (the tip will not move again to re-trigger it).
+  if (isStateBlockingHighlights(ctx.gitState)) return;
   if (lastConflictScanTipSha === ctx.baseTipSha) return;
-  lastConflictScanTipSha = ctx.baseTipSha;
+  const scanTipSha = ctx.baseTipSha;
+  lastConflictScanTipSha = scanTipSha;
   const log = runtime?.logChannel;
   try {
     const changedFiles = await listChangedFilesOnBase(
@@ -1277,6 +1301,12 @@ async function maybeNotifyBaseConflicts(baseBranch: string): Promise<void> {
     );
     if (choice === showLabel) await showConflictFilesCommand();
   } catch (err) {
+    // A transient failure must not burn the dedupe key, or this update
+    // would never be announced (the tip will not move again on its own).
+    // Hand the key back so the next opportunity — the next state event that
+    // reaches this function — retries. Leave it alone if a newer tip has
+    // already claimed it.
+    if (lastConflictScanTipSha === scanTipSha) lastConflictScanTipSha = undefined;
     log?.warn(`Post-fetch conflict scan failed: ${stringifyError(err)}`);
   }
 }
@@ -1763,13 +1793,17 @@ async function copyMcpRegistrationCommand(context: vscode.ExtensionContext): Pro
   }
   const registration = `claude mcp add conflict-lens -- node "${serverPath}"`;
   await vscode.env.clipboard.writeText(registration);
-  const message = isMcpEnabled()
+  // The server only has data to serve while the state file is maintained,
+  // which needs BOTH the extension and the MCP integration on (isMcpActive)
+  // — checking mcp.enabled alone would promise a working setup that answers
+  // "cannot determine the base branch" when the extension itself is off.
+  const message = isMcpActive()
     ? t(
         '{0}: registration command copied. Paste it in your terminal to register with Claude Code.',
         EXTENSION_NAME,
       )
     : t(
-        '{0}: registration command copied. Turn on conflictLens.mcp.enabled so the server can answer.',
+        '{0}: registration command copied. Enable both conflictLens.enabled and conflictLens.mcp.enabled so the server can answer.',
         EXTENSION_NAME,
       );
   void vscode.window.showInformationMessage(message);
